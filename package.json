@@ -1,0 +1,24 @@
+{
+  "name": "garrinchapp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "sharp": "^0.35.5",
+    "vite": "^5.4.21"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
+    "preact": "^11.2.0"
+  },
+  "type": "module"
+}
