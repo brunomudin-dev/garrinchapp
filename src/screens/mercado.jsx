@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
-import { Sheet, Icon, Field, toast, Check, haptic } from '../ui.jsx';
+import { Sheet, Icon, Field, toast, Check, haptic, MenuBtn } from '../ui.jsx';
+import { compress } from '../lib/image.js';
 import { sb, callFn, brl, PAYMENTS, firstName } from '../data.js';
 import { CATEGORY_META, CATEGORY_NAMES, guessCategory, productKey } from '../lib/categories.js';
 import { suggestions, productHistory } from '../lib/suggest.js';
@@ -10,17 +11,6 @@ const dayOf = (iso) => todayStr(new Date(iso));
 const monthKey = (iso) => dayOf(iso).slice(0, 7);
 const monthLabel = (k, opt = { month: 'short' }) => new Intl.DateTimeFormat('pt-BR', { ...opt, timeZone: 'UTC' }).format(new Date(k + '-15T12:00:00Z')).replace('.', '').replace(/^./, (c) => c.toUpperCase());
 
-async function compress(file, max = 1600) {
-  const url = URL.createObjectURL(file);
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-  const s = Math.min(1, max / Math.max(img.width, img.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  URL.revokeObjectURL(url);
-  return c.toDataURL('image/jpeg', 0.82);
-}
-
 /* ---------------- Lançar notinha ---------------- */
 function ScanSheet({ open, onClose, store, onDone }) {
   const [photos, setPhotos] = useState([]);
@@ -28,7 +18,8 @@ function ScanSheet({ open, onClose, store, onDone }) {
   const [kind, setKind] = useState('foto');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const input = useRef();
+  const camInput = useRef();
+  const galInput = useRef();
   useEffect(() => { if (open) { setPhotos([]); setErr(''); setBusy(false); } }, [open]);
 
   const add = async (e) => {
@@ -61,18 +52,20 @@ function ScanSheet({ open, onClose, store, onDone }) {
       </div>
       <p class="muted small" style={{ marginTop: 0 }}>
         {kind === 'foto'
-          ? 'Tire uma foto da notinha esticada e bem iluminada. Se for comprida, tire 2 ou 3 fotos em partes.'
+          ? 'Tire uma foto da notinha esticada e bem iluminada, ou escolha uma imagem da galeria. Se for comprida, use 2 ou 3 fotos em partes.'
           : 'Mande um print da tela do pedido (Amazon, Mercado Livre...) ou do e-mail de confirmação, com os itens e preços aparecendo.'}
       </p>
-      <input ref={input} type="file" accept="image/*" multiple {...(kind === 'foto' ? { capture: 'environment' } : {})} style={{ display: 'none' }} onChange={add} />
+      <input ref={camInput} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={add} />
+      <input ref={galInput} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={add} />
       {photos.length > 0 && <div class="photos">{photos.map((p, i) => <img key={i} src={p} onClick={() => setPhotos(photos.filter((_, j) => j !== i))} />)}</div>}
-      <button class={photos.length ? 'btn ghost block' : 'btn block'} onClick={() => input.current.click()} disabled={busy || photos.length >= 4}>
-        {Icon.camera} {photos.length ? 'Adicionar outra foto' : kind === 'foto' ? 'Tirar foto da notinha' : 'Escolher print'}
-      </button>
+      <div class="row" style={{ marginBottom: 14 }}>
+        {kind === 'foto' && <button class={photos.length ? 'btn ghost grow' : 'btn grow'} onClick={() => camInput.current.click()} disabled={busy || photos.length >= 4}>{Icon.camera} {photos.length ? 'Outra foto' : 'Tirar foto'}</button>}
+        <button class={kind === 'foto' || photos.length ? 'btn ghost grow' : 'btn grow'} onClick={() => galInput.current.click()} disabled={busy || photos.length >= 4}>{Icon.photo} {kind === 'foto' ? 'Da galeria' : 'Escolher print'}</button>
+      </div>
       <Field label="Pago com"><div class="chips" style={{ marginTop: 2 }}>{PAYMENTS.map((p) => <button key={p} class={'chip' + (payment === p ? ' on' : '')} onClick={() => setPayment(p)}>{p}</button>)}</div></Field>
       {err && <div class="err">{err}</div>}
       <button class="btn block" disabled={!photos.length || busy} onClick={send}>{busy ? <><span class="spin" /> Lendo a notinha...</> : 'Ler e salvar'}</button>
-      <p class="muted small" style={{ textAlign: 'center' }}>Toque numa foto pra remover. A leitura leva uns 10–20 segundos.</p>
+      <p class="muted small" style={{ textAlign: 'center' }}>Toque numa foto pra remover (até 4). A leitura leva uns 10 a 20 segundos e depois você confere os itens.</p>
     </Sheet>
   );
 }
@@ -117,19 +110,60 @@ function ManualSheet({ open, onClose, store }) {
 }
 
 /* ---------------- Detalhe de compra ---------------- */
-function PurchaseSheet({ id, onClose, store, openProduct }) {
+function ItemSheet({ item, product, purchase, onClose, store, openProduct }) {
+  const [qty, setQty] = useState(String(item.qty ?? 1));
+  const [total, setTotal] = useState(String(item.total ?? ''));
+  const num = (v) => Number(String(v).replace(',', '.'));
+  const fixTotal = async (delta) => {
+    const nt = +(Number(purchase.total || 0) + delta).toFixed(2);
+    await sb.from('purchases').update({ total: nt }).eq('id', purchase.id);
+  };
+  const save = async () => {
+    const q = num(qty), t = num(total);
+    if (!(q > 0) || !(t >= 0) || total === '') return toast('Confira a quantidade e o valor');
+    const { error } = await sb.from('purchase_items').update({ qty: q, total: t, unit_price: +(t / q).toFixed(4) }).eq('id', item.id);
+    if (error) return toast('Erro: ' + error.message);
+    await fixTotal(t - Number(item.total || 0));
+    onClose(); store.reload();
+  };
+  const remove = async () => {
+    if (!confirm('Remover esse item da compra?')) return;
+    await sb.from('purchase_items').delete().eq('id', item.id);
+    await fixTotal(-Number(item.total || 0));
+    onClose(); store.reload();
+  };
+  return (
+    <Sheet open onClose={onClose} title={product?.name || item.raw_name}>
+      <p class="muted small" style={{ marginTop: 0 }}>Como saiu na nota: {item.raw_name}</p>
+      <div class="row">
+        <Field label={`Quantidade${item.unit ? ' (' + item.unit.toLowerCase() + ')' : ''}`}><input inputMode="decimal" value={qty} onInput={(e) => setQty(e.target.value)} /></Field>
+        <Field label="Valor total (R$)"><input inputMode="decimal" value={total} onInput={(e) => setTotal(e.target.value)} /></Field>
+      </div>
+      <button class="btn block" onClick={save}>Salvar item</button>
+      {product && <button class="btn ghost block" style={{ marginTop: 10 }} onClick={() => { onClose(); openProduct(product.id); }}>Corrigir nome e categoria do produto</button>}
+      <button class="btn danger block" style={{ marginTop: 10 }} onClick={remove}>Remover item</button>
+    </Sheet>
+  );
+}
+
+function PurchaseSheet({ id, review, onClose, store, openProduct }) {
   const { st, reload } = store;
+  const [editItem, setEditItem] = useState(null);
   const p = st.purchases.find((x) => x.id === id);
   const items = st.items.filter((i) => i.purchase_id === id);
   const prod = new Map(st.products.map((x) => [x.id, x]));
   if (!id || !p) return null;
   const setPay = async (pay) => { await sb.from('purchases').update({ payment: pay }).eq('id', id); reload(); };
   const del = async () => { if (!confirm('Apagar essa compra e os itens dela?')) return; await sb.from('purchases').delete().eq('id', id); onClose(); reload(); };
+  const sum = items.reduce((a, i) => a + Number(i.total || 0), 0);
+  const gap = Math.abs(sum - Number(p.total || 0));
   return (
     <Sheet open onClose={onClose} title={p.store_name || 'Compra'}>
+      {review && <div class="ok-msg">🧐 Confira os itens que a IA leu. Toque num item para corrigir quantidade, valor ou nome.</div>}
       <div class="row" style={{ marginBottom: 10 }}>
         <div class="grow"><div class="big">{brl(p.total)}</div><div class="muted small">{new Date(p.purchased_at).toLocaleString('pt-BR', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Sao_Paulo' })} · {items.length} itens</div></div>
       </div>
+      {items.length > 0 && gap > 1 && <div class="err" style={{ background: 'var(--accent-soft)', color: 'var(--accent-ink)' }}>A soma dos itens ({brl(sum)}) é diferente do total da nota ({brl(p.total)}). Pode ser desconto ou frete, ou um item mal lido.</div>}
       <div class="chips" style={{ marginBottom: 14 }}>{PAYMENTS.map((x) => <button key={x} class={'chip' + (p.payment === x ? ' on' : '')} onClick={() => setPay(x)}>{x}</button>)}</div>
       <div class="card">
         <table class="t"><tbody>
@@ -137,7 +171,7 @@ function PurchaseSheet({ id, onClose, store, openProduct }) {
             const pr = prod.get(i.product_id);
             const meta = CATEGORY_META[pr?.category || 'Outros'];
             return (
-              <tr key={i.id} onClick={() => pr && openProduct(pr.id)}>
+              <tr key={i.id} onClick={() => setEditItem(i)}>
                 <td style={{ width: 26 }}>{meta?.emoji}</td>
                 <td><div style={{ fontWeight: 600 }}>{pr?.name || i.raw_name}</div><div class="muted small">{Number(i.qty).toLocaleString('pt-BR')} {i.unit || ''} × {brl(i.unit_price)}</div></td>
                 <td class="r">{brl(i.total)}</td>
@@ -146,7 +180,9 @@ function PurchaseSheet({ id, onClose, store, openProduct }) {
           })}
         </tbody></table>
       </div>
-      <button class="btn danger block" style={{ marginTop: 14 }} onClick={del}>Apagar compra</button>
+      {review && <button class="btn block" style={{ marginTop: 14 }} onClick={onClose}>Está tudo certo</button>}
+      <button class="btn danger block" style={{ marginTop: 10 }} onClick={del}>Apagar compra</button>
+      {editItem && <ItemSheet item={editItem} product={prod.get(editItem.product_id)} purchase={p} store={store} onClose={() => setEditItem(null)} openProduct={openProduct} />}
     </Sheet>
   );
 }
@@ -186,20 +222,35 @@ function ProductSheet({ id, onClose, store }) {
 }
 
 /* ---------------- Lista de compras ---------------- */
+function SuggestRow({ s, onAdd, openProduct }) {
+  return (
+    <div class="row">
+      <button class="grow" style={{ textAlign: 'left' }} onClick={() => openProduct(s.product.id)}>
+        <b>{CATEGORY_META[s.product.category]?.emoji} {s.product.name}</b>
+        <div class="muted small">Costuma durar ~{s.avg} dias · última compra há {s.since}</div>
+      </button>
+      <span class="pill">{s.label}</span>
+      <button class="iconbtn" onClick={() => onAdd(s)} aria-label="Adicionar à lista">{Icon.plus}</button>
+    </div>
+  );
+}
+
 function Lista({ store, today, openProduct }) {
   const { st, reload, setSt } = store;
   const [txt, setTxt] = useState('');
-  const sugg = suggestions(st, today);
+  const all = suggestions(st, today);
+  const now = all.filter((s) => s.tier === 'now');
+  const soon = all.filter((s) => s.tier === 'soon');
   const lowMeds = st.meds.filter((m) => m.active && medStockDays(m) != null && medStockDays(m) <= (m.low_days || 5) && !st.list.some((l) => !l.checked && l.name.toLowerCase() === m.name.toLowerCase()));
   const open = st.list.filter((l) => !l.checked);
   const done = st.list.filter((l) => l.checked);
   const prodMap = new Map(st.products.map((p) => [p.id, p]));
   const matches = txt.length >= 2 ? st.products.filter((p) => p.name.toLowerCase().includes(txt.toLowerCase())).slice(0, 5) : [];
 
-  const add = async (name, product_id = null, source = 'manual') => {
+  const add = async (name, product_id = null, source = 'manual', note = null) => {
     if (!name.trim()) return;
     setTxt('');
-    const { error } = await sb.from('shopping_list').insert({ name: name.trim(), product_id, source });
+    const { error } = await sb.from('shopping_list').insert({ name: name.trim(), product_id, source, note });
     if (error) toast('Erro: ' + error.message);
     reload();
   };
@@ -210,7 +261,12 @@ function Lista({ store, today, openProduct }) {
     reload();
   };
   const clear = async () => { await sb.from('shopping_list').delete().in('id', done.map((d) => d.id)); reload(); };
-  const addAll = async () => { await sb.from('shopping_list').insert(sugg.map((s) => ({ name: s.product.name, product_id: s.product.id, source: 'sugestao' }))); toast(`${sugg.length} itens adicionados`); reload(); };
+  const addAll = async () => {
+    const rows = [...now.map((s) => ({ name: s.product.name, product_id: s.product.id, source: 'sugestao', note: s.label })), ...lowMeds.map((m) => ({ name: m.name, source: 'estoque' }))];
+    await sb.from('shopping_list').insert(rows);
+    toast(`${rows.length} ${rows.length === 1 ? 'item adicionado' : 'itens adicionados'}`);
+    reload();
+  };
 
   // agrupa por categoria pra facilitar no corredor
   const groups = {};
@@ -218,6 +274,13 @@ function Lista({ store, today, openProduct }) {
     const cat = (l.product_id && prodMap.get(l.product_id)?.category) || guessCategory(l.name);
     (groups[cat] = groups[cat] || []).push(l);
   }
+  const share = async () => {
+    const lines = Object.entries(groups).map(([cat, ls]) => `${CATEGORY_META[cat]?.emoji || ''} ${cat}\n` + ls.map((l) => `• ${l.name}${l.note ? ' (' + l.note + ')' : ''}`).join('\n'));
+    const text = 'Lista de compras 🛒\n\n' + lines.join('\n\n');
+    if (navigator.share) navigator.share({ text }).catch(() => {});
+    else { try { await navigator.clipboard.writeText(text); toast('Lista copiada'); } catch { toast('Não consegui copiar'); } }
+  };
+  const learned = new Set(st.purchases.map((p) => p.id)).size;
 
   return (
     <div>
@@ -226,6 +289,13 @@ function Lista({ store, today, openProduct }) {
         <button class="btn" type="submit">{Icon.plus}</button>
       </form>
       {matches.length > 0 && <div class="chips" style={{ marginTop: -4, marginBottom: 12 }}>{matches.map((p) => <button key={p.id} class="chip" onClick={() => add(p.name, p.id)}>{CATEGORY_META[p.category]?.emoji} {p.name}</button>)}</div>}
+
+      <div class="card row" style={{ background: 'var(--accent-soft)', boxShadow: 'none', marginBottom: 14 }}>
+        <span style={{ fontSize: 22 }}>🐱</span>
+        <span class="small grow" style={{ color: 'var(--accent-ink)' }}>
+          {learned < 3 ? 'Ainda aprendendo o que vocês compram. Com umas 3 notinhas eu começo a sugerir o que está acabando.' : `Sugestões baseadas em ${learned} compras. Quanto mais notinhas, mais certeiro eu fico.`}
+        </span>
+      </div>
 
       {open.length === 0 && <div class="card empty"><img src={import.meta.env.BASE_URL + 'icon-192.png'} alt="" /><div>Lista vazia. Adicione itens ou use as sugestões abaixo.</div></div>}
       {Object.entries(groups).map(([cat, ls]) => (
@@ -236,26 +306,31 @@ function Lista({ store, today, openProduct }) {
               <button key={l.id} class="item" style={{ width: '100%', textAlign: 'left', padding: '10px 14px' }} onClick={() => toggle(l)}>
                 <Check on={false} />
                 <span class="grow name">{l.name}</span>
-                {l.source !== 'manual' && <span class="pill">{l.source === 'estoque' ? 'estoque' : 'sugestão'}</span>}
+                {l.note && <span class="pill">{l.note}</span>}
+                {l.source !== 'manual' && <span class="pill due">{l.source === 'estoque' ? 'estoque' : 'sugestão'}</span>}
               </button>
             ))}
           </div>
         </div>
       ))}
+      {open.length > 0 && <button class="btn ghost block" style={{ marginBottom: 6 }} onClick={share}>{Icon.share} Compartilhar lista</button>}
 
-      {(sugg.length > 0 || lowMeds.length > 0) && (
+      {(now.length > 0 || lowMeds.length > 0) && (
         <>
-          <div class="section"><h2>Sugestões do Garrincha</h2>{sugg.length > 1 && <button class="link" onClick={addAll}>Adicionar todas</button>}</div>
+          <div class="section"><h2>Provavelmente acabando</h2>{now.length + lowMeds.length > 1 && <button class="link" onClick={addAll}>Montar lista ({now.length + lowMeds.length})</button>}</div>
           <div class="suggest stack">
             {lowMeds.map((m) => (
-              <div key={m.id} class="row"><span class="grow"><b>{m.name}</b><div class="muted small">Estoque acaba em ~{medStockDays(m)} dias</div></span><button class="iconbtn" onClick={() => add(m.name, null, 'estoque')}>{Icon.plus}</button></div>
+              <div key={m.id} class="row"><span class="grow"><b>💊 {m.name}</b><div class="muted small">Estoque acaba em ~{medStockDays(m)} dias</div></span><button class="iconbtn" onClick={() => add(m.name, null, 'estoque')}>{Icon.plus}</button></div>
             ))}
-            {sugg.slice(0, 12).map((s) => (
-              <div key={s.product.id} class="row">
-                <button class="grow" style={{ textAlign: 'left' }} onClick={() => openProduct(s.product.id)}><b>{CATEGORY_META[s.product.category]?.emoji} {s.product.name}</b><div class="muted small">Costuma durar ~{s.avg} dias · comprado há {s.since}</div></button>
-                <button class="iconbtn" onClick={() => add(s.product.name, s.product.id, 'sugestao')}>{Icon.plus}</button>
-              </div>
-            ))}
+            {now.slice(0, 15).map((s) => <SuggestRow key={s.product.id} s={s} openProduct={openProduct} onAdd={() => add(s.product.name, s.product.id, 'sugestao', s.label)} />)}
+          </div>
+        </>
+      )}
+      {soon.length > 0 && (
+        <>
+          <div class="section"><h2>Talvez precise</h2><span class="muted small">{soon.length}</span></div>
+          <div class="suggest stack">
+            {soon.slice(0, 10).map((s) => <SuggestRow key={s.product.id} s={s} openProduct={openProduct} onAdd={() => add(s.product.name, s.product.id, 'sugestao', s.label)} />)}
           </div>
         </>
       )}
@@ -263,7 +338,7 @@ function Lista({ store, today, openProduct }) {
       {done.length > 0 && (
         <>
           <div class="section"><h2>No carrinho</h2><button class="link" onClick={clear}>Limpar</button></div>
-          <div class="stack">{done.map((l) => <button key={l.id} class="item done" style={{ width: '100%', textAlign: 'left', padding: '10px 14px' }} onClick={() => toggle(l)}><Check on /><span class="grow name">{l.name}</span></button>)}</div>
+          <div class="stack">{done.map((l) => <button key={l.id} class="item done" style={{ width: '100%', textAlign: 'left', padding: '10px 14px' }} onClick={() => toggle(l)}><Check on /><span class="grow name">{l.name}</span>{l.note && <span class="pill">{l.note}</span>}</button>)}</div>
         </>
       )}
     </div>
@@ -388,23 +463,26 @@ export function Mercado({ store, today, intent, clearIntent }) {
   const [manual, setManual] = useState(false);
   const [purchase, setPurchase] = useState(null);
   const [product, setProduct] = useState(null);
-  useEffect(() => { if (intent === 'scan') { setTab('compras'); setScan(true); clearIntent(); } }, [intent]);
+  useEffect(() => {
+    if (intent === 'scan') { setTab('compras'); setScan(true); clearIntent(); }
+    else if (intent === 'compras' || intent === 'gastos') { setTab(intent); clearIntent(); }
+  }, [intent]);
 
   return (
     <div>
-      <div class="top"><div class="t"><h1>Mercado</h1><div class="sub">Lista, compras e gastos</div></div><button class="btn soft" onClick={() => setScan(true)}>{Icon.camera}</button></div>
+      <div class="top"><div class="t"><h1>Mercado</h1><div class="sub">Lista, compras e gastos</div></div><button class="btn soft" onClick={() => setScan(true)}>{Icon.camera}</button><MenuBtn /></div>
       <div class="seg">
         <button class={tab === 'lista' ? 'on' : ''} onClick={() => setTab('lista')}>Lista</button>
         <button class={tab === 'compras' ? 'on' : ''} onClick={() => setTab('compras')}>Compras</button>
         <button class={tab === 'gastos' ? 'on' : ''} onClick={() => setTab('gastos')}>Gastos</button>
       </div>
       {tab === 'lista' && <Lista store={store} today={today} openProduct={setProduct} />}
-      {tab === 'compras' && <Compras store={store} openPurchase={setPurchase} setScan={setScan} setManual={setManual} />}
+      {tab === 'compras' && <Compras store={store} openPurchase={(id) => setPurchase({ id })} setScan={setScan} setManual={setManual} />}
       {tab === 'gastos' && <Gastos store={store} openProduct={setProduct} />}
 
-      <ScanSheet open={scan} onClose={() => setScan(false)} store={store} onDone={(id) => { setTab('compras'); setPurchase(id); }} />
+      <ScanSheet open={scan} onClose={() => setScan(false)} store={store} onDone={(id) => { setTab('compras'); setPurchase({ id, review: true }); }} />
       <ManualSheet open={manual} onClose={() => setManual(false)} store={store} />
-      {purchase && !product && <PurchaseSheet id={purchase} onClose={() => setPurchase(null)} store={store} openProduct={setProduct} />}
+      {purchase && !product && <PurchaseSheet id={purchase.id || purchase} review={!!purchase.review} onClose={() => setPurchase(null)} store={store} openProduct={setProduct} />}
       {product && <ProductSheet id={product} onClose={() => setProduct(null)} store={store} />}
     </div>
   );

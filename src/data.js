@@ -44,7 +44,7 @@ export function useStore(session) {
       const t = todayStr();
       setToday(t);
       const since = addDays(t, -400);
-      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items] = await Promise.all([
+      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items, bills, billPays, habits, habitLogs, events, complaints, reacts] = await Promise.all([
         sb.from('profiles').select('*').eq('id', session.user.id).single(),
         sb.from('profiles').select('*').order('created_at'),
         sb.from('households').select('*').single(),
@@ -56,11 +56,20 @@ export function useStore(session) {
         fetchAll(() => sb.from('products').select('*').order('name')),
         fetchAll(() => sb.from('purchases').select('id,store_name,purchased_at,total,payment,source,created_by').gte('purchased_at', since).order('purchased_at', { ascending: false })),
         fetchAll(() => sb.from('purchase_items').select('id,purchase_id,product_id,raw_name,qty,unit,unit_price,total')),
+        sb.from('bills').select('*').order('sort').order('created_at'),
+        sb.from('bill_payments').select('*').gte('ym', addDays(t, -100).slice(0, 7)),
+        sb.from('habits').select('*').order('sort').order('created_at'),
+        fetchAll(() => sb.from('habit_logs').select('*').gte('log_date', addDays(t, -120)).order('log_date', { ascending: false })),
+        sb.from('events').select('*').order('start_date').order('start_time', { nullsFirst: true }),
+        sb.from('complaints').select('*').order('created_at', { ascending: false }).limit(60),
+        sb.from('complaint_reactions').select('*'),
       ]);
-      for (const r of [me, profiles, hh, meds, medLogs, tasks, list]) if (r.error) throw r.error;
+      for (const r of [me, profiles, hh, meds, medLogs, tasks, list, bills, billPays, habits, events, complaints, reacts]) if (r.error) throw r.error;
       setSt({
         me: me.data, profiles: profiles.data, hh: hh.data, meds: meds.data, medLogs: medLogs.data,
         tasks: tasks.data, taskLogs, list: list.data, products, purchases, items,
+        bills: bills.data, billPays: billPays.data, habits: habits.data, habitLogs, events: events.data,
+        complaints: complaints.data, reacts: reacts.data,
       });
     } catch (e) {
       console.error(e);

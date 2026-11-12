@@ -1,6 +1,18 @@
-import { useEffect, useState } from 'preact/hooks';
+import { createContext } from 'preact';
+import { useEffect, useState, useContext } from 'preact/hooks';
+
+const S = { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
 
 export const Icon = {
+  menu: <svg viewBox="0 0 24 24" width="22" height="22" {...S}><path d="M4 7h16M4 12h16M4 17h16" /></svg>,
+  cal: <svg viewBox="0 0 24 24" {...S}><rect x="4" y="5" width="16" height="16" rx="3" /><path d="M16 3v4M8 3v4M4 11h16" /></svg>,
+  bell: <svg viewBox="0 0 24 24" width="20" height="20" {...S}><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6" /><path d="M9 17v1a3 3 0 0 0 6 0v-1" /></svg>,
+  bellOff: <svg viewBox="0 0 24 24" width="20" height="20" {...S}><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2-3v-3a7 7 0 0 1 4-6" /><path d="M9 17v1a3 3 0 0 0 6 0v-1" /><path d="M3 3l18 18" /></svg>,
+  up: <svg viewBox="0 0 24 24" width="20" height="20" {...S}><path d="M7 11v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3a4 4 0 0 0 4-4V5a2 2 0 0 1 4 0v5h3a2 2 0 0 1 2 2l-1 5a3 3 0 0 1-2 2h-7a3 3 0 0 1-3-3" /></svg>,
+  down: <svg viewBox="0 0 24 24" width="20" height="20" {...S}><path d="M7 13V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h3a4 4 0 0 1 4 4v1a2 2 0 0 0 4 0v-5h3a2 2 0 0 0 2-2l-1-5a3 3 0 0 0-2-2h-7a3 3 0 0 0-3 3" /></svg>,
+  trash: <svg viewBox="0 0 24 24" width="18" height="18" {...S}><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" /></svg>,
+  photo: <svg viewBox="0 0 24 24" width="22" height="22" {...S}><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M8.5 9h.01M4 16l4-4a3 4 0 0 1 3 0l5 5M14 14l1-1a3 4 0 0 1 3 0l2 2" /></svg>,
+  share: <svg viewBox="0 0 24 24" width="20" height="20" {...S}><path d="M12 4v11M8 8l4-4 4 4M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" /></svg>,
   check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>,
   today: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4" /></svg>,
   home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.5L12 3.5l8.5 7" /><path d="M5.5 9v10.5h13V9" /><path d="M10 19.5v-5h4v5" /></svg>,
@@ -12,6 +24,14 @@ export const Icon = {
   x: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>,
   chev: <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6" /></svg>,
 };
+
+export const MenuCtx = createContext(() => {});
+export function MenuBtn() {
+  const open = useContext(MenuCtx);
+  return <button class="iconbtn" onClick={open} aria-label="Abrir menu">{Icon.menu}</button>;
+}
+
+export const EMOJIS = ['🏋️', '🏃', '📖', '🧘', '🚴', '🏊', '💧', '🥗', '😴', '🧠', '✍️', '🎸', '🧾', '⚡', '🏠', '🏢', '📱', '🌐', '🚗', '🛡️', '🎓', '🎉', '✈️', '🏖️', '🎂', '💍', '🩺', '🥂', '🎄', '📅'];
 
 export function Check({ on }) {
   return <span class={'check' + (on ? ' on' : '')}>{on && Icon.check}</span>;

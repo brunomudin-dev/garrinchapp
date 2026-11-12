@@ -1,5 +1,9 @@
 import { useState } from 'preact/hooks';
-import { Check, Avatar, Ring, Sheet, Icon } from '../ui.jsx';
+import { Check, Avatar, Ring, Sheet, Icon, MenuBtn } from '../ui.jsx';
+import { Habitos } from './habitos.jsx';
+import { habitsToday } from '../lib/habits.js';
+import { billInfo } from '../lib/bills.js';
+import { dateLabel, whenPill } from './agenda.jsx';
 import { tasksWithStatus, toggleTask, toggleMed, medStockDays } from '../actions.js';
 import { isCleanerDay, nextCleanerDay, fmtRel, addDays, weekday, nowHM } from '../lib/schedule.js';
 import { suggestions } from '../lib/suggest.js';
@@ -83,14 +87,18 @@ export function Hoje({ store, today, go }) {
     .sort((a, b) => ({ late: 0, due: 1, done: 2 }[a.st.status] - { late: 0, due: 1, done: 2 }[b.st.status]) || (b.st.lateDays || 0) - (a.st.lateDays || 0));
   const doneTasks = todayTasks.filter((t) => t.st.status === 'done').length;
   const myDone = myMeds.filter((m) => taken.has(m.id)).length;
-  const total = todayTasks.length + myMeds.length;
-  const done = doneTasks + myDone;
+  const myHabits = habitsToday(st, today, me.id);
+  const total = todayTasks.length + myMeds.length + myHabits.length;
+  const done = doneTasks + myDone + myHabits.filter((h) => h.done).length;
+
+  const billsSoon = st.bills.filter((b) => b.active).map((b) => ({ b, info: billInfo(b, st.billPays, today) })).filter((x) => ['late', 'today', 'soon'].includes(x.info.state)).sort((a, b) => a.info.rank - b.info.rank);
+  const nextEvents = st.events.filter((e) => (e.end_date || e.start_date) >= today && e.start_date <= new Date(Date.parse(today + 'T12:00:00Z') + 30 * 86400000).toISOString().slice(0, 10)).slice(0, 3);
 
   const cleanerToday = isCleanerDay(st.hh, today);
   const nextClean = nextCleanerDay(st.hh, addDays(today, 1));
-  const sugg = suggestions(st, today);
+  const sugg = suggestions(st, today).filter((x) => x.tier === 'now');
   const listCount = st.list.filter((l) => !l.checked).length;
-  const dateLabel = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date()).replace(/^./, (c) => c.toUpperCase());
+  const dayLabel = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Sao_Paulo' }).format(new Date()).replace(/^./, (c) => c.toUpperCase());
 
   return (
     <div>
@@ -98,8 +106,9 @@ export function Hoje({ store, today, go }) {
         <img src={import.meta.env.BASE_URL + 'icon-192.png'} alt="" />
         <div class="t">
           <h1>{greeting()}, {firstName(me.display_name)}</h1>
-          <div class="sub">{dateLabel}</div>
+          <div class="sub">{dayLabel}</div>
         </div>
+        <MenuBtn />
       </div>
 
       <div class="hero">
@@ -120,6 +129,23 @@ export function Hoje({ store, today, go }) {
         </>
       )}
       {!other && <p class="muted small" style={{ marginTop: 10 }}>💌 Convide a Gabi em Ajustes pra vocês dividirem a casa no app.</p>}
+
+      <Habitos store={store} today={today} />
+
+      {billsSoon.length > 0 && (
+        <>
+          <div class="section"><h2>Contas</h2><button class="link" onClick={() => go('casa', 'contas')}>Ver todas</button></div>
+          <div class="stack">
+            {billsSoon.map(({ b, info }) => (
+              <button key={b.id} class="item" style={{ width: '100%', textAlign: 'left' }} onClick={() => go('casa', 'contas')}>
+                <span class="ic">{b.icon || '🧾'}</span>
+                <span class="grow"><div class="name">{b.name}</div><div class="meta"><span class={'pill ' + (info.state === 'late' ? 'late' : 'due')}>{info.label}</span></div></span>
+                {Icon.chev}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div class="section"><h2>Casa hoje</h2><button class="link" onClick={() => go('casa')}>Todas</button></div>
       <div class="stack">
@@ -144,6 +170,24 @@ export function Hoje({ store, today, go }) {
           );
         })}
       </div>
+
+      {nextEvents.length > 0 && (
+        <>
+          <div class="section"><h2>Agenda</h2><button class="link" onClick={() => go('agenda')}>Abrir</button></div>
+          <div class="stack">
+            {nextEvents.map((e) => {
+              const w = whenPill(e, today);
+              return (
+                <button key={e.id} class="item" style={{ width: '100%', textAlign: 'left' }} onClick={() => go('agenda')}>
+                  <span class="ic">{e.icon || '📅'}</span>
+                  <span class="grow"><div class="name">{e.title}</div><div class="meta">{dateLabel(e)}{e.start_time ? ` · ${e.start_time.slice(0, 5)}` : ''}</div></span>
+                  <span class={'pill ' + w.cls}>{w.text}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       <div class="section"><h2>Mercado</h2><button class="link" onClick={() => go('mercado')}>Abrir</button></div>
       <div class="card row" style={{ gap: 14 }}>

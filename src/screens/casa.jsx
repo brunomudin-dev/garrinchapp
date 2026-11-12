@@ -1,5 +1,6 @@
-import { useState } from 'preact/hooks';
-import { Check, Sheet, Icon, Field, toast, Avatar } from '../ui.jsx';
+import { useState, useEffect } from 'preact/hooks';
+import { Check, Sheet, Icon, Field, toast, Avatar, MenuBtn } from '../ui.jsx';
+import { Contas } from './contas.jsx';
 import { tasksWithStatus, toggleTask } from '../actions.js';
 import { ruleLabel, fmtRel, nextCleanerDay, isCleanerDay, diffDays } from '../lib/schedule.js';
 import { sb, firstName } from '../data.js';
@@ -93,7 +94,7 @@ function CleanerForm({ st, onClose, reload }) {
   );
 }
 
-export function Casa({ store, today }) {
+export function Casa({ store, today, intent, clearIntent }) {
   const { st, reload } = store;
   const [edit, setEdit] = useState(null);
   const [cleaner, setCleaner] = useState(false);
@@ -107,10 +108,16 @@ export function Casa({ store, today }) {
   ];
   const next = nextCleanerDay(st.hh, today);
   const cToday = isCleanerDay(st.hh, today);
+  useEffect(() => {
+    if (intent === 'contas') {
+      setTimeout(() => document.getElementById('contas')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+      clearIntent && clearIntent();
+    }
+  }, [intent]);
 
   return (
     <div>
-      <div class="top"><div class="t"><h1>Casa</h1><div class="sub">Tarefas da rotina</div></div><button class="btn soft" onClick={() => setEdit({})}>{Icon.plus} Nova</button></div>
+      <div class="top"><div class="t"><h1>Casa</h1><div class="sub">Tarefas e contas</div></div><button class="btn soft" onClick={() => setEdit({})}>{Icon.plus} Nova</button><MenuBtn /></div>
 
       <button class="card row" style={{ width: '100%', textAlign: 'left' }} onClick={() => setCleaner(true)}>
         <span class="item" style={{ padding: 0, boxShadow: 'none', background: 'none' }}><span class="ic">🧹</span></span>
@@ -152,6 +159,8 @@ export function Casa({ store, today }) {
         </div>
       ))}
       <p class="muted small" style={{ textAlign: 'center', marginTop: 20 }}>Toque no nome pra editar. Toque no círculo pra marcar como feito.</p>
+
+      <Contas store={store} today={today} />
 
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar tarefa' : 'Nova tarefa'}>
         {edit && <TaskForm task={edit.id ? edit : null} st={st} onClose={() => setEdit(null)} reload={reload} />}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'preact/hooks';
-import { Sheet, Icon, Field, toast, Avatar } from '../ui.jsx';
+import { Sheet, Icon, Field, toast, Avatar, MenuBtn } from '../ui.jsx';
 import { sb, callFn, VAPID_PUBLIC, firstName } from '../data.js';
 import { medStockDays } from '../actions.js';
 
@@ -51,9 +51,21 @@ function MedForm({ med, st, onClose, reload }) {
   );
 }
 
+const KIND = { med: 'lembrete de remédio', med2: 'segundo lembrete de remédio', summary: 'resumo do dia', bill: 'conta a pagar', event: 'evento', event2: 'evento', test: 'teste' };
+const fmtWhen = (iso) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+
 function Notifs({ st }) {
   const [state, setState] = useState('checando');
   const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState(null);
+  const loadLast = async () => {
+    const [ok, bad] = await Promise.all([
+      sb.from('push_log').select('kind,created_at').eq('ok', true).order('created_at', { ascending: false }).limit(1),
+      sb.from('push_log').select('kind,created_at,status,detail').eq('ok', false).gt('status', 0).order('created_at', { ascending: false }).limit(1),
+    ]);
+    setLast({ ok: ok.data?.[0] || null, bad: bad.data?.[0] || null });
+  };
+  useEffect(() => { loadLast(); }, []);
   const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const check = async () => {
     if (!supported) return setState(isStandalone() ? 'sem-suporte' : 'instalar');
@@ -78,7 +90,13 @@ function Notifs({ st }) {
       toast('Notificações ativadas! 🔔');
     } catch (e) { toast('Erro: ' + e.message); } finally { setBusy(false); }
   };
-  const test = async () => { try { const r = await callFn('notify', { mode: 'test' }); toast(r.sent ? 'Enviada! Deve chegar em segundos.' : 'Nenhum aparelho inscrito'); } catch (e) { toast('Erro: ' + e.message); } };
+  const test = async () => {
+    try {
+      const r = await callFn('notify', { mode: 'test' });
+      toast(r.sent ? 'Enviada! Deve chegar em segundos.' : r.errors?.length ? 'A Apple/Google recusou o envio: ' + r.errors[0] : 'Nenhum aparelho inscrito');
+      loadLast();
+    } catch (e) { toast('Erro: ' + e.message); }
+  };
 
   return (
     <div class="card">
@@ -86,19 +104,35 @@ function Notifs({ st }) {
       {state === 'sem-suporte' && <p class="small" style={{ margin: 0 }}>Esse aparelho não suporta notificações web. Atualize o iOS (16.4 ou mais novo).</p>}
       {state === 'negado' && <p class="small" style={{ margin: 0 }}>As notificações foram bloqueadas. Libere em Ajustes do iPhone → Notificações → GarrinchApp.</p>}
       {state === 'inativo' && <><p class="small" style={{ marginTop: 0 }}>Lembretes dos remédios no horário cadastrado, e resumos às 8h e às 19h com o que ainda falta.</p><button class="btn block" disabled={busy} onClick={enable}>🔔 Ativar notificações</button></>}
-      {state === 'ativo' && <div class="row"><span class="grow"><b>🔔 Ativas neste aparelho</b><div class="muted small">Remédios no horário · resumo 8h e 19h</div></span><button class="btn ghost" onClick={test}>Testar</button></div>}
+      {state === 'ativo' && (
+        <>
+          <div class="row"><span class="grow"><b>🔔 Ativas neste aparelho</b><div class="muted small">Remédios no horário (e de novo 30 min depois) · resumo 8h e 19h · contas e agenda</div></span><button class="btn ghost" onClick={test}>Testar</button></div>
+          {last && (
+            <div class="small muted" style={{ marginTop: 10 }}>
+              {last.ok ? `Último aviso entregue: ${fmtWhen(last.ok.created_at)} (${KIND[last.ok.kind] || last.ok.kind})` : 'Nenhum aviso entregue ainda.'}
+              {last.bad && (!last.ok || last.bad.created_at > last.ok.created_at) && <div style={{ color: 'var(--red)', marginTop: 4 }}>Última falha: {fmtWhen(last.bad.created_at)} · {last.bad.detail || last.bad.status}</div>}
+            </div>
+          )}
+        </>
+      )}
       {state === 'checando' && <span class="spin dark" />}
     </div>
   );
 }
 
-export function Ajustes({ store }) {
+export function Ajustes({ store, intent, clearIntent }) {
   const { st, reload } = store;
   const [med, setMed] = useState(null);
   const [name, setName] = useState(st.me.display_name);
   const [guide, setGuide] = useState(false);
   const saveName = async () => { if (name.trim() && name !== st.me.display_name) { await sb.from('profiles').update({ display_name: name.trim() }).eq('id', st.me.id); reload(); toast('Nome salvo'); } };
   const partner = st.profiles.find((p) => p.id !== st.me.id);
+  useEffect(() => {
+    if (!intent) return;
+    if (intent === 'install') setGuide(true);
+    else setTimeout(() => document.getElementById('aj-' + intent)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    clearIntent && clearIntent();
+  }, [intent]);
   const share = async () => {
     const text = `Bora usar o GarrinchApp 🐱\n1) Abra ${location.origin}${import.meta.env.BASE_URL} no Safari\n2) Toque em "Criar conta" e use o código da casa: ${st.hh.join_code}`;
     if (navigator.share) navigator.share({ text }).catch(() => {}); else { navigator.clipboard.writeText(text); toast('Convite copiado'); }
@@ -106,9 +140,9 @@ export function Ajustes({ store }) {
 
   return (
     <div>
-      <div class="top"><div class="t"><h1>Ajustes</h1><div class="sub">Do jeito de vocês</div></div></div>
+      <div class="top"><div class="t"><h1>Ajustes</h1><div class="sub">Do jeito de vocês</div></div><MenuBtn /></div>
 
-      <div class="section"><h2>Remédios e suplementos</h2><button class="link" onClick={() => setMed({})}>+ Adicionar</button></div>
+      <div class="section" id="aj-meds"><h2>Remédios e suplementos</h2><button class="link" onClick={() => setMed({})}>+ Adicionar</button></div>
       {st.profiles.map((p) => {
         const meds = st.meds.filter((m) => m.owner_id === p.id);
         return (
@@ -131,7 +165,7 @@ export function Ajustes({ store }) {
         );
       })}
 
-      <div class="section"><h2>Notificações</h2></div>
+      <div class="section" id="aj-notifs"><h2>Notificações</h2></div>
       <Notifs st={st} />
 
       <div class="section"><h2>A casa</h2></div>

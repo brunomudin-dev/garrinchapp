@@ -2,12 +2,49 @@ import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import './styles.css';
 import { sb, useSession, useStore } from './data.js';
-import { Icon, ToastHost } from './ui.jsx';
+import { Icon, ToastHost, MenuCtx } from './ui.jsx';
 import { tasksWithStatus } from './actions.js';
+import { billInfo } from './lib/bills.js';
 import { Hoje } from './screens/hoje.jsx';
 import { Casa } from './screens/casa.jsx';
 import { Mercado } from './screens/mercado.jsx';
 import { Ajustes } from './screens/ajustes.jsx';
+import { Agenda } from './screens/agenda.jsx';
+import { Reclame } from './screens/reclame.jsx';
+
+const MENU = [
+  ['reclame', null, '😼', 'Reclame aqui', 'Mural de brincadeira'],
+  ['casa', 'contas', '🧾', 'Contas a pagar', 'Vencimentos e lembretes'],
+  ['mercado', 'compras', '🛒', 'Histórico de compras', 'Notinhas e pedidos'],
+  ['mercado', 'gastos', '📊', 'Gastos no mercado', 'Por mês, categoria e cartão'],
+  ['ajustes', 'meds', '💊', 'Remédios e estoque', 'Horários e doses'],
+  ['ajustes', 'notifs', '🔔', 'Notificações', 'Ativar e testar'],
+  ['ajustes', 'install', '📱', 'Instalar no iPhone', 'Passo a passo'],
+  ['ajustes', null, '⚙️', 'Ajustes', 'Conta, casa e convite'],
+];
+
+function Drawer({ open, onClose, go }) {
+  if (!open) return null;
+  return (
+    <>
+      <div class="scrim" style={{ zIndex: 52 }} onClick={onClose} />
+      <aside class="drawer" role="dialog" aria-label="Menu">
+        <div class="row" style={{ marginBottom: 14 }}>
+          <img class="dr-logo" src={import.meta.env.BASE_URL + "icon-192.png"} alt="" width="44" height="44" />
+          <div class="grow"><h3 style={{ margin: 0, fontSize: 20 }}>GarrinchApp</h3><div class="muted small">Bruno e Gabi</div></div>
+          <button class="iconbtn" onClick={onClose} aria-label="Fechar">{Icon.x}</button>
+        </div>
+        {MENU.map(([tab, intent, emoji, label, sub]) => (
+          <button key={label} class="dr-item" onClick={() => { onClose(); go(tab, intent); }}>
+            <span class="e">{emoji}</span>
+            <span class="grow"><b>{label}</b><div class="muted small">{sub}</div></span>
+            {Icon.chev}
+          </button>
+        ))}
+      </aside>
+    </>
+  );
+}
 
 function Auth() {
   const [mode, setMode] = useState('login');
@@ -53,23 +90,29 @@ function Shell({ session }) {
   const initTab = new URLSearchParams(location.search).get('tab') || 'hoje';
   const [tab, setTab] = useState(initTab);
   const [intent, setIntent] = useState(null);
+  const [menu, setMenu] = useState(false);
   const go = (t, i) => { setTab(t); setIntent(i || null); window.scrollTo(0, 0); };
   useEffect(() => { if (location.search) history.replaceState(null, '', import.meta.env.BASE_URL); }, []);
 
   if (!st) return <div class="auth" style={{ textAlign: 'center' }}><img class="logo" src={import.meta.env.BASE_URL + 'icon-512.png'} alt="" /><span class="spin dark" style={{ display: 'inline-block', marginTop: 20 }} /></div>;
   if (st.error) return <div class="auth"><div class="err">Não consegui carregar: {st.error}</div><button class="btn block" onClick={store.reload}>Tentar de novo</button><button class="btn ghost block" style={{ marginTop: 10 }} onClick={() => sb.auth.signOut()}>Sair</button></div>;
 
-  const pending = tasksWithStatus(st, today).filter((t) => ['late', 'due'].includes(t.st.status)).length;
-  const tabs = [['hoje', 'Hoje', Icon.today], ['casa', 'Casa', Icon.home, pending], ['mercado', 'Mercado', Icon.cart], ['ajustes', 'Ajustes', Icon.gear]];
+  const pendingTasks = tasksWithStatus(st, today).filter((t) => ['late', 'due'].includes(t.st.status)).length;
+  const pendingBills = st.bills.filter((b) => b.active && ['late', 'today', 'soon'].includes(billInfo(b, st.billPays, today).state)).length;
+  const next7 = st.events.filter((e) => e.start_date >= today && e.start_date <= new Date(Date.parse(today + 'T12:00:00Z') + 2 * 86400000).toISOString().slice(0, 10)).length;
+  const tabs = [['hoje', 'Hoje', Icon.today], ['casa', 'Casa', Icon.home, pendingTasks + pendingBills], ['mercado', 'Mercado', Icon.cart], ['agenda', 'Agenda', Icon.cal, next7]];
 
   return (
-    <>
+    <MenuCtx.Provider value={() => setMenu(true)}>
       <main class="app">
         {tab === 'hoje' && <Hoje store={store} today={today} go={go} />}
-        {tab === 'casa' && <Casa store={store} today={today} />}
+        {tab === 'casa' && <Casa store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
         {tab === 'mercado' && <Mercado store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
-        {tab === 'ajustes' && <Ajustes store={store} />}
+        {tab === 'agenda' && <Agenda store={store} today={today} />}
+        {tab === 'reclame' && <Reclame store={store} />}
+        {tab === 'ajustes' && <Ajustes store={store} intent={intent} clearIntent={() => setIntent(null)} />}
       </main>
+      <Drawer open={menu} onClose={() => setMenu(false)} go={go} />
       <nav class="tabbar"><div class="in">
         {tabs.map(([k, l, ic, badge]) => (
           <button key={k} class={'tab' + (tab === k ? ' on' : '')} onClick={() => go(k)}>
@@ -78,7 +121,7 @@ function Shell({ session }) {
         ))}
       </div></nav>
       <ToastHost />
-    </>
+    </MenuCtx.Provider>
   );
 }
 
