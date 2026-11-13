@@ -1,10 +1,11 @@
 import { useState } from 'preact/hooks';
 import { Sheet, Field, Icon, EMOJIS, MenuBtn, toast } from '../ui.jsx';
-import { sb } from '../data.js';
+import { sb, firstName } from '../data.js';
 import { diffDays } from '../lib/schedule.js';
 
 const wdShort = (s) => new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: 'UTC' }).format(new Date(s + 'T12:00:00Z')).replace('.', '');
 const monthName = (s) => new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(s.slice(0, 7) + '-15T12:00:00Z')).replace(/^./, (c) => c.toUpperCase());
+const nick = (p) => { const n = firstName(p.display_name); return n === 'Gabriela' ? 'Gabi' : n; };
 const dm = (s) => `${s.slice(8, 10)}/${s.slice(5, 7)}`;
 
 export function dateLabel(e) {
@@ -25,11 +26,11 @@ export function whenPill(e, today) {
   return { text: 'passou', cls: '' };
 }
 
-function EventForm({ ev, onClose, reload, today }) {
+function EventForm({ ev, st, onClose, reload, today }) {
   const [f, setF] = useState(() => ({
     title: ev?.title || '', icon: ev?.icon || '📅', start_date: ev?.start_date || today, end_date: ev?.end_date || '',
     start_time: ev?.start_time ? ev.start_time.slice(0, 5) : '', notes: ev?.notes || '', alert: ev ? ev.alert : true,
-    alert_days: ev?.alert_days ?? 1, alert_time: ev?.alert_time ? ev.alert_time.slice(0, 5) : '09:00', alert_hours: ev?.alert_hours ?? '',
+    alert_days: ev?.alert_days ?? 1, alert_time: ev?.alert_time ? ev.alert_time.slice(0, 5) : '09:00', alert_hours: ev?.alert_hours ?? '', owner_id: ev?.owner_id || '',
   }));
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const save = async () => {
@@ -40,6 +41,7 @@ function EventForm({ ev, onClose, reload, today }) {
       title: f.title.trim(), icon: f.icon, start_date: f.start_date, end_date: f.end_date || null, start_time: f.start_time || null,
       notes: f.notes.trim() || null, alert: f.alert, alert_days: Number(f.alert_days) || 0, alert_time: f.alert_time || '09:00',
       alert_hours: f.start_time && f.alert_hours !== '' ? Number(f.alert_hours) : null,
+      owner_id: f.owner_id || null,
     };
     const { error } = ev ? await sb.from('events').update(row).eq('id', ev.id) : await sb.from('events').insert(row);
     if (error) return toast('Erro: ' + error.message);
@@ -49,6 +51,12 @@ function EventForm({ ev, onClose, reload, today }) {
   return (
     <div>
       <Field label="Nome"><input value={f.title} onInput={(e) => set('title', e.target.value)} placeholder="Ex.: Jantar com amigos" /></Field>
+      <Field label="De quem é">
+        <div class="days">
+          <button class={!f.owner_id ? 'on' : ''} onClick={() => set('owner_id', '')}>Ambos</button>
+          {st.profiles.map((p) => <button key={p.id} class={f.owner_id === p.id ? 'on' : ''} onClick={() => set('owner_id', p.id)}>{nick(p)}</button>)}
+        </div>
+      </Field>
       <Field label="Ícone"><div class="chips">{EMOJIS.slice(18, 30).concat(['🎸', '🎤', '🥩']).map((e) => <button key={e} class={'chip' + (f.icon === e ? ' on' : '')} style={{ padding: '8px 10px', fontSize: 20 }} onClick={() => set('icon', e)}>{e}</button>)}</div></Field>
       <div class="row">
         <Field label="Data"><input type="date" value={f.start_date} onInput={(e) => set('start_date', e.target.value)} /></Field>
@@ -102,6 +110,7 @@ export function Agenda({ store, today }) {
 
   const row = (e) => {
     const w = whenPill(e, today);
+    const who = e.owner_id && st.profiles.find((p) => p.id === e.owner_id);
     return (
       <div key={e.id} class="item" style={{ alignItems: 'flex-start' }}>
         <button class="ic" onClick={() => setEdit(e)}>{e.icon || '📅'}</button>
@@ -109,7 +118,10 @@ export function Agenda({ store, today }) {
           <div class="name">{e.title}</div>
           <div class="meta">{dateLabel(e)}{e.start_time ? ` · ${e.start_time.slice(0, 5)}` : ''}</div>
           {e.notes && <div class="meta" style={{ whiteSpace: 'pre-line', marginTop: 4 }}>{e.notes}</div>}
-          {w.text !== 'passou' && <div style={{ marginTop: 6 }}><span class={'pill ' + w.cls}>{w.text}</span></div>}
+          <div class="row" style={{ marginTop: 6, gap: 6 }}>
+            {w.text !== 'passou' && <span class={'pill ' + w.cls}>{w.text}</span>}
+            <span class={'pill' + (who ? ' v' : '')}>{who ? nick(who) : 'Ambos'}</span>
+          </div>
         </button>
         <button class="iconbtn" style={{ color: e.alert ? 'var(--accent)' : 'var(--muted)' }} onClick={() => toggleAlert(e)} aria-label={e.alert ? 'Desligar alerta' : 'Ligar alerta'}>{e.alert ? Icon.bell : Icon.bellOff}</button>
       </div>
@@ -141,7 +153,7 @@ export function Agenda({ store, today }) {
       <p class="muted small" style={{ textAlign: 'center', marginTop: 18 }}>O sino liga ou desliga o alerta de cada evento. Os dois recebem o aviso.</p>
 
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar evento' : 'Novo evento'}>
-        {edit && <EventForm ev={edit.id ? edit : null} today={today} onClose={() => setEdit(null)} reload={reload} />}
+        {edit && <EventForm ev={edit.id ? edit : null} st={st} today={today} onClose={() => setEdit(null)} reload={reload} />}
       </Sheet>
     </div>
   );
