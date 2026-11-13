@@ -44,7 +44,7 @@ export function useStore(session) {
       const t = todayStr();
       setToday(t);
       const since = addDays(t, -400);
-      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items, bills, billPays, habits, habitLogs, events, complaints, reacts] = await Promise.all([
+      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items, bills, billPays, habits, habitLogs, events, complaints, reacts, lists, listItems] = await Promise.all([
         sb.from('profiles').select('*').eq('id', session.user.id).single(),
         sb.from('profiles').select('*').order('created_at'),
         sb.from('households').select('*').single(),
@@ -63,13 +63,15 @@ export function useStore(session) {
         sb.from('events').select('*').order('start_date').order('start_time', { nullsFirst: true }),
         sb.from('complaints').select('*').order('created_at', { ascending: false }).limit(60),
         sb.from('complaint_reactions').select('*'),
+        sb.from('lists').select('*').order('sort'),
+        fetchAll(() => sb.from('list_items').select('*').order('created_at', { ascending: false })),
       ]);
-      for (const r of [me, profiles, hh, meds, medLogs, tasks, list, bills, billPays, habits, events, complaints, reacts]) if (r.error) throw r.error;
+      for (const r of [me, profiles, hh, meds, medLogs, tasks, list, bills, billPays, habits, events, complaints, reacts, lists]) if (r.error) throw r.error;
       setSt({
         me: me.data, profiles: profiles.data, hh: hh.data, meds: meds.data, medLogs: medLogs.data,
         tasks: tasks.data, taskLogs, list: list.data, products, purchases, items,
         bills: bills.data, billPays: billPays.data, habits: habits.data, habitLogs, events: events.data,
-        complaints: complaints.data, reacts: reacts.data,
+        complaints: complaints.data, reacts: reacts.data, lists: lists.data, listItems,
       });
     } catch (e) {
       console.error(e);

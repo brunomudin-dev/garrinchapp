@@ -12,7 +12,7 @@ function TaskForm({ task, st, onClose, reload }) {
   const [f, setF] = useState(() => ({
     name: task?.name || '', icon: task?.icon || '✨', rule: task?.rule || 'interval',
     interval_days: task?.interval_days || 7, weekdays: task?.weekdays || [], max_days: task?.max_days || 3,
-    assignee_id: task?.assignee_id || '',
+    assignee_id: task?.assignee_id || '', start_date: task?.start_date || new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }),
   }));
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const save = async () => {
@@ -23,6 +23,7 @@ function TaskForm({ task, st, onClose, reload }) {
       weekdays: f.rule === 'weekdays' ? f.weekdays : null,
       max_days: f.rule === 'as_needed' ? Number(f.max_days) || 3 : null,
       assignee_id: f.assignee_id || null,
+      ...(f.rule === 'once' ? { start_date: f.start_date } : {}),
     };
     const { error } = task ? await sb.from('tasks').update(row).eq('id', task.id) : await sb.from('tasks').insert({ ...row, sort: 99 });
     if (error) return toast('Erro: ' + error.message);
@@ -42,6 +43,7 @@ function TaskForm({ task, st, onClose, reload }) {
       </Field>
       <Field label="Frequência">
         <select value={f.rule} onChange={(e) => set('rule', e.target.value)}>
+          <option value="once">Uma vez só (sem repetir)</option>
           <option value="interval">A cada X dias</option>
           <option value="weekdays">Dias fixos da semana</option>
           <option value="as_needed">Quando precisar (com limite)</option>
@@ -59,6 +61,10 @@ function TaskForm({ task, st, onClose, reload }) {
           <div class="days">{WD.map((d, i) => <button key={i} class={f.weekdays.includes(i) ? 'on' : ''} onClick={() => set('weekdays', f.weekdays.includes(i) ? f.weekdays.filter((x) => x !== i) : [...f.weekdays, i])}>{d}</button>)}</div>
         </Field>
       )}
+      {f.rule === 'once' && (
+        <Field label="Para quando?"><input type="date" value={f.start_date} onInput={(e) => set('start_date', e.target.value)} /></Field>
+      )}
+      {f.rule === 'once' && <p class="muted small" style={{ marginTop: -6 }}>Depois de marcada como feita, ela sai da lista.</p>}
       {f.rule === 'as_needed' && (
         <Field label="Avisar depois de quantos dias sem fazer?"><input type="number" min="1" inputMode="numeric" value={f.max_days} onInput={(e) => set('max_days', e.target.value)} /></Field>
       )}

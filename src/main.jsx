@@ -11,8 +11,10 @@ import { Mercado } from './screens/mercado.jsx';
 import { Ajustes } from './screens/ajustes.jsx';
 import { Agenda } from './screens/agenda.jsx';
 import { Reclame } from './screens/reclame.jsx';
+import { Listas } from './screens/listas.jsx';
 
 const MENU = [
+  ['listas', null, '📝', 'Listas', 'Filmes, lugares, receitas e livros'],
   ['reclame', null, '😼', 'Reclame aqui', 'Mural de brincadeira'],
   ['casa', 'contas', '🧾', 'Contas a pagar', 'Vencimentos e lembretes'],
   ['mercado', 'compras', '🛒', 'Histórico de compras', 'Notinhas e pedidos'],
@@ -110,6 +112,7 @@ function Shell({ session }) {
         {tab === 'mercado' && <Mercado store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
         {tab === 'agenda' && <Agenda store={store} today={today} />}
         {tab === 'reclame' && <Reclame store={store} />}
+        {tab === 'listas' && <Listas store={store} />}
         {tab === 'ajustes' && <Ajustes store={store} intent={intent} clearIntent={() => setIntent(null)} />}
       </main>
       <Drawer open={menu} onClose={() => setMenu(false)} go={go} />

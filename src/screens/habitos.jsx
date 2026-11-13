@@ -1,8 +1,8 @@
 import { useState } from 'preact/hooks';
 import { Check, Avatar, Sheet, Field, Icon, EMOJIS, toast, haptic } from '../ui.jsx';
 import { sb, firstName } from '../data.js';
-import { habitsToday, scheduledOn, nextOccurrence } from '../lib/habits.js';
-import { fmtRel } from '../lib/schedule.js';
+import { habitsToday, scheduledOn, nextOccurrence, habitDone, logsOf } from '../lib/habits.js';
+import { fmtRel, addDays, weekday } from '../lib/schedule.js';
 
 const WD = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const WDN = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
@@ -131,21 +131,64 @@ function Person({ p, store, today, label, onEdit, onCount }) {
   );
 }
 
+function HabitWeek({ st, today }) {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  return (
+    <div>
+      {st.profiles.map((p) => {
+        const hs = st.habits.filter((h) => h.active && h.owner_id === p.id);
+        if (!hs.length) return null;
+        return (
+          <div key={p.id} style={{ marginBottom: 18 }}>
+            <div class="who"><Avatar p={p} /> {p.id === st.me.id ? 'Você' : firstName(p.display_name)}</div>
+            <div class="card">
+              <div class="week">
+                <span />
+                {days.map((d) => <span class="h" key={d}>{WDN[weekday(d)]}<br />{d.slice(8)}</span>)}
+                {hs.map((h) => {
+                  const logs = logsOf(st, h.id);
+                  return [
+                    <span class="ellipsis" key={h.id}>{h.icon} {h.name}</span>,
+                    ...days.map((d) => {
+                      const log = logs.get(d);
+                      const sched = scheduledOn(h, d);
+                      const before = d < (h.created_at || '').slice(0, 10);
+                      if (habitDone(h, log)) return <span key={h.id + d} class="c y">✓</span>;
+                      if (log && h.kind === 'count') return <span key={h.id + d} class="c" style={{ fontSize: 11, fontWeight: 700 }}>{num(log.amount)}</span>;
+                      if (!sched || before || d === today) return <span key={h.id + d} class="c" style={{ color: 'var(--muted)' }}>{sched ? '' : '·'}</span>;
+                      return <span key={h.id + d} class="c n">✕</span>;
+                    }),
+                  ];
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      <p class="muted small">✓ = feito · ✕ = dia agendado sem registro · · = dia sem esse hábito. Na leitura, o número é o que foi lido quando não bateu a meta.</p>
+    </div>
+  );
+}
+
 export function Habitos({ store, today }) {
   const { st, reload } = store;
   const [edit, setEdit] = useState(null);
   const [count, setCount] = useState(null);
+  const [week, setWeek] = useState(false);
   const me = st.me;
   const other = st.profiles.find((p) => p.id !== me.id);
   const any = st.habits.some((h) => h.active);
   return (
     <div>
-      <div class="section"><h2>Hábitos</h2><button class="link" onClick={() => setEdit({})}>+ Novo</button></div>
+      <div class="section"><h2>Hábitos</h2><span style={{ display: 'flex', gap: 16 }}><button class="link" onClick={() => setWeek(true)}>Ver semana</button><button class="link" onClick={() => setEdit({})}>+ Novo</button></span></div>
       {!any && <div class="card empty"><div>Nenhum hábito ainda.<br />Cadastre treino, leitura, corrida...</div></div>}
       <Person p={me} label="Você" store={store} today={today} onEdit={setEdit} onCount={setCount} />
       {other && <Person p={other} label={firstName(other.display_name)} store={store} today={today} onEdit={setEdit} onCount={setCount} />}
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar hábito' : 'Novo hábito'}>
         {edit && <HabitForm habit={edit.id ? edit : null} st={st} onClose={() => setEdit(null)} reload={reload} />}
+      </Sheet>
+      <Sheet open={week} onClose={() => setWeek(false)} title="Hábitos: últimos 7 dias">
+        {week && <HabitWeek st={st} today={today} />}
       </Sheet>
       <Sheet open={!!count} onClose={() => setCount(null)} title={count ? `${count.icon} ${count.name}` : ''}>
         {count && <CountSheet h={count} today={today} store={store} onClose={() => setCount(null)} />}

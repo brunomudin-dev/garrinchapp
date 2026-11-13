@@ -13,7 +13,7 @@ export function tasksWithStatus(st, today) {
   return st.tasks.filter((t) => t.active).map((t) => {
     const l = last.get(t.id);
     return { ...t, last: l, st: taskStatus(t, l?.done_on || null, today, st.hh) };
-  });
+  }).filter((t) => t.st.status !== 'finished');
 }
 
 export async function toggleTask(store, task, today) {

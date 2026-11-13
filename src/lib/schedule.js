@@ -40,6 +40,14 @@ export function taskStatus(task, lastDone, today, hh) {
   const start = task.start_date || today;
   if (lastDone === today && task.rule !== 'cleaner') return { status: 'done', label: 'Feito hoje' };
 
+  if (task.rule === 'once') {
+    if (lastDone) return { status: 'finished', label: `Feita ${fmtRel(lastDone, today)}` };
+    const d = diffDays(today, start);
+    if (d < 0) return { status: 'ok', next: start, label: `Para ${fmtRel(start, today)}` };
+    if (d === 0) return { status: 'due', next: start, label: 'Hoje' };
+    return { status: 'late', next: start, lateDays: d, label: `Atrasada ${d} dia${d > 1 ? 's' : ''}` };
+  }
+
   if (task.rule === 'interval') {
     const n = task.interval_days || 7;
     const next = lastDone ? addDays(lastDone, n) : (start <= today ? today : start);
@@ -95,5 +103,6 @@ export function ruleLabel(t) {
   if (t.rule === 'weekdays') return (t.weekdays || []).slice().sort().map((d) => WD[d]).join(', ');
   if (t.rule === 'as_needed') return `Quando precisar (máx. ${t.max_days || 3} dias)`;
   if (t.rule === 'cleaner') return 'Dia da faxineira';
+  if (t.rule === 'once') return 'Uma vez só';
   return '';
 }
