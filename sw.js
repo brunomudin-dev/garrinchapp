@@ -1,5 +1,5 @@
 // GarrinchApp service worker: cache básico + notificações push
-const CACHE = 'garrinchapp-v4';
+const CACHE = 'garrinchapp-v5';
 const BASE = new URL(self.registration.scope).pathname; // ex.: /garrinchapp/
 const rel = (u) => new URL(String(u || '').replace(/^\//, ''), self.registration.scope).href;
 self.addEventListener('install', (e) => { self.skipWaiting(); });
