@@ -41,19 +41,21 @@ function TaskForm({ task, st, onClose, reload }) {
       <Field label="Ícone">
         <div class="chips">{EMOJIS.map((e) => <button key={e} class={'chip' + (f.icon === e ? ' on' : '')} style={{ padding: '8px 10px', fontSize: 20 }} onClick={() => set('icon', e)}>{e}</button>)}</div>
       </Field>
-      <Field label="Frequência">
-        <select value={f.rule} onChange={(e) => set('rule', e.target.value)}>
-          <option value="once">Uma vez só (sem repetir)</option>
-          <option value="interval">A cada X dias</option>
-          <option value="weekdays">Dias fixos da semana</option>
-          <option value="as_needed">Quando precisar (com limite)</option>
-          <option value="cleaner">No dia da faxineira</option>
-        </select>
+      <Field label="Repetir">
+        <div class="days">
+          {[['once', 'Uma vez só'], ['interval', 'A cada X dias'], ['weekdays', 'Dias fixos'], ['as_needed', 'Quando precisar'], ['cleaner', 'Dia da faxina']].map(([k, l]) => (
+            <button key={k} class={f.rule === k ? 'on' : ''} onClick={() => set('rule', k)}>{l}</button>
+          ))}
+        </div>
       </Field>
       {f.rule === 'interval' && (
         <Field label="A cada quantos dias?">
-          <div class="days">{[1, 2, 3, 7, 14, 30].map((n) => <button key={n} class={Number(f.interval_days) === n ? 'on' : ''} onClick={() => set('interval_days', n)}>{n === 1 ? 'Diário' : n === 7 ? 'Semana' : n === 14 ? '15 dias' : n === 30 ? 'Mês' : n + 'd'}</button>)}</div>
-          <input type="number" min="1" inputMode="numeric" value={f.interval_days} onInput={(e) => set('interval_days', e.target.value)} style={{ marginTop: 8 }} />
+          <div class="days">{[1, 2, 3, 7, 14, 30].map((n) => <button key={n} class={Number(f.interval_days) === n ? 'on' : ''} onClick={() => set('interval_days', n)}>{n === 1 ? 'Diário' : n === 7 ? 'Semana' : n === 14 ? '15 dias' : n === 30 ? 'Mês' : n + ' dias'}</button>)}</div>
+          <div class="row after" style={{ gap: 10 }}>
+            <span class="muted small">Ou digite:</span>
+            <input type="number" min="1" inputMode="numeric" value={f.interval_days} onInput={(e) => set('interval_days', e.target.value)} style={{ width: 80, textAlign: 'center' }} aria-label="Número de dias" />
+            <span class="muted small">dias</span>
+          </div>
         </Field>
       )}
       {f.rule === 'weekdays' && (

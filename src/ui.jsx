@@ -48,8 +48,8 @@ export function Ring({ value, total }) {
   return (
     <div class="ring">
       <svg width="64" height="64" viewBox="0 0 64 64">
-        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(255,255,255,.28)" stroke-width="7" />
-        <circle cx="32" cy="32" r={r} fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-dasharray={c} stroke-dashoffset={c * (1 - pct)} style={{ transition: 'stroke-dashoffset .5s ease' }} />
+        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(26,14,4,.18)" stroke-width="7" />
+        <circle cx="32" cy="32" r={r} fill="none" stroke="#1A0E04" stroke-width="7" stroke-linecap="round" stroke-dasharray={c} stroke-dashoffset={c * (1 - pct)} style={{ transition: 'stroke-dashoffset .5s ease' }} />
       </svg>
       <b>{value}/{total}</b>
     </div>

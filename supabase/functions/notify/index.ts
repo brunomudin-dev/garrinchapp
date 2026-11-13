@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
 
       // 3) Eventos da agenda
       for (const e of events || []) {
+        if (e.owner_id && e.owner_id !== p.id) continue;
         const alertDate = addDays(e.start_date, -(e.alert_days ?? 1));
         const at = tmin(e.alert_time || '09:00');
         const days = diffDays(e.start_date, today);

@@ -58,22 +58,20 @@ function EventForm({ ev, st, onClose, reload, today }) {
         </div>
       </Field>
       <Field label="Ícone"><div class="chips">{EMOJIS.slice(18, 30).concat(['🎸', '🎤', '🥩']).map((e) => <button key={e} class={'chip' + (f.icon === e ? ' on' : '')} style={{ padding: '8px 10px', fontSize: 20 }} onClick={() => set('icon', e)}>{e}</button>)}</div></Field>
-      <div class="row">
-        <Field label="Data"><input type="date" value={f.start_date} onInput={(e) => set('start_date', e.target.value)} /></Field>
-        <Field label="Até (opcional)"><input type="date" value={f.end_date} min={f.start_date} onInput={(e) => set('end_date', e.target.value)} /></Field>
-      </div>
+      <Field label="Começa"><input type="date" value={f.start_date} onInput={(e) => set('start_date', e.target.value)} /></Field>
+      <Field label="Termina (opcional, se durar mais de um dia)"><input type="date" value={f.end_date} min={f.start_date} onInput={(e) => set('end_date', e.target.value)} /></Field>
       <Field label="Horário (opcional)"><input type="time" value={f.start_time} onInput={(e) => set('start_time', e.target.value)} /></Field>
       <Field label="Observações (voos, reservas, endereço...)"><textarea rows="4" value={f.notes} onInput={(e) => set('notes', e.target.value)} /></Field>
       <div class="divider" />
       <button class="row" style={{ width: '100%', margin: '4px 0 12px', textAlign: 'left' }} onClick={() => set('alert', !f.alert)}>
-        <span class="grow"><b>{f.alert ? '🔔 Avisar vocês dois' : '🔕 Sem alerta'}</b><div class="muted small">Toque para {f.alert ? 'desligar' : 'ligar'}</div></span>
+        <span class="grow"><b>{f.alert ? (f.owner_id ? `🔔 Avisar ${nick(st.profiles.find((p) => p.id === f.owner_id) || { display_name: '' })}` : '🔔 Avisar vocês dois') : '🔕 Sem alerta'}</b><div class="muted small">Toque para {f.alert ? 'desligar' : 'ligar'}</div></span>
       </button>
       {f.alert && (
         <>
           <Field label="Avisar com antecedência">
             <div class="days">{[0, 1, 2, 3, 7].map((n) => <button key={n} class={Number(f.alert_days) === n ? 'on' : ''} onClick={() => set('alert_days', n)}>{n === 0 ? 'No dia' : n + 'd'}</button>)}</div>
           </Field>
-          <div class="row">
+          <div>
             <Field label="Aviso às"><input type="time" value={f.alert_time} onInput={(e) => set('alert_time', e.target.value)} /></Field>
             {f.start_time && (
               <Field label="E mais um aviso antes do horário">
@@ -150,7 +148,7 @@ export function Agenda({ store, today }) {
           {past && <div class="stack">{done.map(row)}</div>}
         </>
       )}
-      <p class="muted small" style={{ textAlign: 'center', marginTop: 18 }}>O sino liga ou desliga o alerta de cada evento. Os dois recebem o aviso.</p>
+      <p class="muted small" style={{ textAlign: 'center', marginTop: 18 }}>O sino liga ou desliga o alerta. O aviso vai para o dono do evento, ou para os dois quando é de ambos.</p>
 
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar evento' : 'Novo evento'}>
         {edit && <EventForm ev={edit.id ? edit : null} st={st} today={today} onClose={() => setEdit(null)} reload={reload} />}

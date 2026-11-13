@@ -95,7 +95,7 @@ function ManualSheet({ open, onClose, store }) {
   return (
     <Sheet open={open} onClose={onClose} title="Lançar à mão">
       <Field label="Onde"><input value={f.store} onInput={(e) => set('store', e.target.value)} placeholder="Verdemar, Amazon, farmácia..." /></Field>
-      <div class="row">
+      <div>
         <Field label="Data"><input type="date" value={f.date} onInput={(e) => set('date', e.target.value)} /></Field>
         <Field label="Total (R$)"><input inputMode="decimal" value={f.total} onInput={(e) => set('total', e.target.value)} placeholder="0,00" /></Field>
       </div>
@@ -135,7 +135,7 @@ function ItemSheet({ item, product, purchase, onClose, store, openProduct }) {
   return (
     <Sheet open onClose={onClose} title={product?.name || item.raw_name}>
       <p class="muted small" style={{ marginTop: 0 }}>Como saiu na nota: {item.raw_name}</p>
-      <div class="row">
+      <div class="row2">
         <Field label={`Quantidade${item.unit ? ' (' + item.unit.toLowerCase() + ')' : ''}`}><input inputMode="decimal" value={qty} onInput={(e) => setQty(e.target.value)} /></Field>
         <Field label="Valor total (R$)"><input inputMode="decimal" value={total} onInput={(e) => setTotal(e.target.value)} /></Field>
       </div>

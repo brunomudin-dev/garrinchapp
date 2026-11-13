@@ -33,14 +33,14 @@ function MedForm({ med, st, onClose, reload }) {
       <Field label="Nome"><input value={f.name} onInput={(e) => set('name', e.target.value)} placeholder="Ex.: Creatina" /></Field>
       <div class="seg"><button class={f.kind === 'suplemento' ? 'on' : ''} onClick={() => set('kind', 'suplemento')}>🥤 Suplemento</button><button class={f.kind === 'remedio' ? 'on' : ''} onClick={() => set('kind', 'remedio')}>💊 Remédio</button></div>
       <Field label="De quem"><select value={f.owner_id} onChange={(e) => set('owner_id', e.target.value)}>{st.profiles.map((p) => <option key={p.id} value={p.id}>{p.display_name}</option>)}</select></Field>
-      <div class="row">
+      <div class="row2">
         <Field label="Dose (opcional)"><input value={f.dose} onInput={(e) => set('dose', e.target.value)} placeholder="5 g, 1 cápsula" /></Field>
         <Field label="Horário do lembrete"><input type="time" value={f.time} onInput={(e) => set('time', e.target.value)} /></Field>
       </div>
       <p class="muted small" style={{ marginTop: -4 }}>Sem horário: não tem lembrete na hora, mas entra no resumo das 19h se não tiver check.</p>
       <div class="divider" />
       <p class="small" style={{ fontWeight: 700, margin: '6px 4px' }}>Controle de estoque (opcional)</p>
-      <div class="row">
+      <div class="row2">
         <Field label="Doses restantes"><input type="number" inputMode="decimal" value={f.stock} onInput={(e) => set('stock', e.target.value)} placeholder="ex.: 60" /></Field>
         <Field label="Avisar com (dias)"><input type="number" inputMode="numeric" value={f.low_days} onInput={(e) => set('low_days', e.target.value)} /></Field>
       </div>
