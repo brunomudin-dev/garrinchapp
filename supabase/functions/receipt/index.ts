@@ -15,7 +15,9 @@ const PROMPT = `Você recebe a foto de um cupom fiscal brasileiro (NFC-e / cupom
 Extraia os dados com precisão. Regras:
 - items: um por linha de produto do cupom. "raw_name" = descrição exatamente como impressa (maiúsculas, abreviações). "name" = nome legível em português (ex.: "Detergente Ypê Neutro 500 ml").
 - qty = quantidade (pode ser decimal para KG). unit = UN, KG, L, etc. unit_price e total em reais (número com ponto decimal).
-- Se houver desconto em um item, use o total líquido do item.
+- DESCONTOS DE CLIENTE / FIDELIDADE (muito importante): muitos mercados imprimem, logo abaixo do item, uma segunda linha com o preço de cliente cadastrado (ex.: "MEU VERDEMAR:", "CLIENTE", "CLUBE", "PREÇO ESPECIAL", "DESC.") e depois "VOCE ECONOMIZOU: x,xx". Nesses casos o item vale o preço COM desconto: unit_price = valor unitário da linha de desconto e total = valor total da linha de desconto (ex.: UVA 16,99 com "MEU VERDEMAR 14,99" e "VOCE ECONOMIZOU 2,00" → total 14.99). Nunca crie um item separado para a linha do programa de fidelidade nem para "VOCE ECONOMIZOU". Informe também em "discount" o valor economizado no item (0 se não houver).
+- Outros descontos de item (linha "DESCONTO" ou valor negativo logo abaixo): use o total líquido do item.
+- Confira no fim: a soma dos totais dos itens deve bater (com diferença de centavos) com o "Valor a pagar". Se não bater, revise os descontos de cada item antes de responder.
 - category: escolha uma de: ${CATS.join(', ')}.
 - store_name: nome fantasia do estabelecimento (ou o site, ex.: "Amazon"). cnpj se visível.
 - Ignore frete, taxas e descontos gerais como itens; o total pago deve incluí-los.
@@ -31,7 +33,7 @@ const SCHEMA = {
       type: 'ARRAY',
       items: {
         type: 'OBJECT',
-        properties: { raw_name: { type: 'STRING' }, name: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, unit_price: { type: 'NUMBER' }, total: { type: 'NUMBER' }, category: { type: 'STRING', enum: CATS } },
+        properties: { raw_name: { type: 'STRING' }, name: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, unit_price: { type: 'NUMBER' }, total: { type: 'NUMBER' }, discount: { type: 'NUMBER' }, category: { type: 'STRING', enum: CATS } },
         required: ['raw_name', 'name', 'total'],
       },
     },
@@ -76,6 +78,19 @@ Deno.serve(async (req) => {
     const r = await readReceipt(images.slice(0, 4), key);
     const items = (r.items || []).filter((i: { raw_name?: string; total?: number }) => i.raw_name && i.total != null);
     if (!items.length) return json({ error: 'Não encontrei itens nessa foto. Tente uma foto mais próxima, bem iluminada e com a notinha esticada.' }, 422);
+
+    // Rede de segurança: se a IA devolveu os itens pelo preço cheio, a soma passa do valor pago pelo total de descontos.
+    const sumItems = items.reduce((a: number, i: { total: number }) => a + (Number(i.total) || 0), 0);
+    const sumDisc = items.reduce((a: number, i: { discount?: number }) => a + (Number(i.discount) || 0), 0);
+    if (r.total != null && sumDisc > 0 && Math.abs(sumItems - sumDisc - Number(r.total)) < 0.06 && Math.abs(sumItems - Number(r.total)) >= 0.06) {
+      for (const i of items) {
+        const d = Number(i.discount) || 0;
+        if (d > 0) {
+          i.total = +(Number(i.total) - d).toFixed(2);
+          i.unit_price = +(i.total / (Number(i.qty) || 1)).toFixed(4);
+        }
+      }
+    }
 
     let purchased_at = new Date().toISOString();
     if (r.purchased_at && /^\d{4}-\d{2}-\d{2}/.test(r.purchased_at)) {
