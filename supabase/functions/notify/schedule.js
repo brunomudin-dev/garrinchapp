@@ -106,3 +106,18 @@ export function ruleLabel(t) {
   if (t.rule === 'once') return 'Uma vez só';
   return '';
 }
+
+/** Evento que se repete todo ano: devolve a próxima ocorrência (a partir de hoje). */
+export function nextYearly(e, today) {
+  if (!e.yearly || !e.start_date) return e;
+  const span = e.end_date ? diffDays(e.end_date, e.start_date) : 0;
+  const y = Number(today.slice(0, 4));
+  let start = `${y}${e.start_date.slice(4)}`;
+  if (start.slice(5) === '02-29' && !(y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0))) start = `${y}-02-28`;
+  if (addDays(start, span) < today) {
+    const y2 = y + 1;
+    start = `${y2}${e.start_date.slice(4)}`;
+    if (start.slice(5) === '02-29' && !(y2 % 4 === 0 && (y2 % 100 !== 0 || y2 % 400 === 0))) start = `${y2}-02-28`;
+  }
+  return { ...e, start_date: start, end_date: span ? addDays(start, span) : e.end_date && e.end_date === e.start_date ? start : null, orig_start: e.start_date };
+}

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { Sheet, Field, Icon, EMOJIS, MenuBtn, toast } from '../ui.jsx';
 import { sb, firstName } from '../data.js';
 import { diffDays } from '../lib/schedule.js';
@@ -30,7 +30,7 @@ function EventForm({ ev, st, onClose, reload, today }) {
   const [f, setF] = useState(() => ({
     title: ev?.title || '', icon: ev?.icon || '📅', start_date: ev?.start_date || today, end_date: ev?.end_date || '',
     start_time: ev?.start_time ? ev.start_time.slice(0, 5) : '', notes: ev?.notes || '', alert: ev ? ev.alert : true,
-    alert_days: ev?.alert_days ?? 1, alert_time: ev?.alert_time ? ev.alert_time.slice(0, 5) : '09:00', alert_hours: ev?.alert_hours ?? '', owner_id: ev?.owner_id || '',
+    alert_days: ev?.alert_days ?? 1, alert_time: ev?.alert_time ? ev.alert_time.slice(0, 5) : '09:00', alert_hours: ev?.alert_hours ?? '', owner_id: ev?.owner_id || '', yearly: !!ev?.yearly,
   }));
   const set = (k, v) => setF((o) => ({ ...o, [k]: v }));
   const save = async () => {
@@ -42,6 +42,7 @@ function EventForm({ ev, st, onClose, reload, today }) {
       notes: f.notes.trim() || null, alert: f.alert, alert_days: Number(f.alert_days) || 0, alert_time: f.alert_time || '09:00',
       alert_hours: f.start_time && f.alert_hours !== '' ? Number(f.alert_hours) : null,
       owner_id: f.owner_id || null,
+      yearly: f.yearly,
     };
     const { error } = ev ? await sb.from('events').update(row).eq('id', ev.id) : await sb.from('events').insert(row);
     if (error) return toast('Erro: ' + error.message);
@@ -60,6 +61,10 @@ function EventForm({ ev, st, onClose, reload, today }) {
       <Field label="Ícone"><div class="chips">{EMOJIS.slice(18, 30).concat(['🎸', '🎤', '🥩']).map((e) => <button key={e} class={'chip' + (f.icon === e ? ' on' : '')} style={{ padding: '8px 10px', fontSize: 20 }} onClick={() => set('icon', e)}>{e}</button>)}</div></Field>
       <Field label="Começa"><input type="date" value={f.start_date} onInput={(e) => set('start_date', e.target.value)} /></Field>
       <Field label="Termina (opcional, se durar mais de um dia)"><input type="date" value={f.end_date} min={f.start_date} onInput={(e) => set('end_date', e.target.value)} /></Field>
+      <button class="toggle-row" onClick={() => set('yearly', !f.yearly)}>
+        <span><b>Repete todo ano</b><br /><span class="muted small">Aniversários e datas especiais</span></span>
+        <span class={'switch' + (f.yearly ? ' on' : '')} aria-hidden="true"><span /></span>
+      </button>
       <Field label="Horário (opcional)"><input type="time" value={f.start_time} onInput={(e) => set('start_time', e.target.value)} /></Field>
       <Field label="Observações (voos, reservas, endereço...)"><textarea rows="4" value={f.notes} onInput={(e) => set('notes', e.target.value)} /></Field>
       <div class="divider" />
@@ -89,9 +94,10 @@ function EventForm({ ev, st, onClose, reload, today }) {
   );
 }
 
-export function Agenda({ store, today }) {
+export function Agenda({ store, today, intent, clearIntent }) {
   const { st, reload } = store;
   const [edit, setEdit] = useState(null);
+  useEffect(() => { if (intent === 'novo') { setEdit({}); clearIntent && clearIntent(); } }, [intent]);
   const [past, setPast] = useState(false);
   const isOver = (e) => (e.end_date || e.start_date) < today;
   const upcoming = st.events.filter((e) => !isOver(e));
@@ -119,6 +125,7 @@ export function Agenda({ store, today }) {
           <div class="row" style={{ marginTop: 6, gap: 6 }}>
             {w.text !== 'passou' && <span class={'pill ' + w.cls}>{w.text}</span>}
             <span class={'pill' + (who ? ' v' : '')}>{who ? nick(who) : 'Ambos'}</span>
+            {e.yearly && <span class="pill">🔁 todo ano</span>}
           </div>
         </button>
         <button class="iconbtn" style={{ color: e.alert ? 'var(--accent)' : 'var(--muted)' }} onClick={() => toggleAlert(e)} aria-label={e.alert ? 'Desligar alerta' : 'Ligar alerta'}>{e.alert ? Icon.bell : Icon.bellOff}</button>

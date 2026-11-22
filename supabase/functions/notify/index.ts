@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
-import { todayStr, nowHM, taskStatus, addDays, diffDays, weekday } from './schedule.js';
+import { todayStr, nowHM, taskStatus, addDays, diffDays, weekday, nextYearly } from './schedule.js';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret' } });
 
@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
 
     const ymPrev = addDays(today.slice(0, 7) + '-15', -30).slice(0, 7);
     const ymNext = addDays(today.slice(0, 7) + '-15', 30).slice(0, 7);
-    const [{ data: hh }, { data: allMeds }, { data: medLogs }, { data: tasks }, { data: bills }, { data: payments }, { data: habits }, { data: habitLogs }, { data: events }] = await Promise.all([
+    const [{ data: hh }, { data: allMeds }, { data: medLogs }, { data: tasks }, { data: bills }, { data: payments }, { data: habits }, { data: habitLogs }, { data: evRaw }, { data: pendings }] = await Promise.all([
       admin.from('households').select('*').eq('id', hid).single(),
       admin.from('meds').select('*').eq('household_id', hid).eq('active', true),
       admin.from('med_logs').select('med_id').eq('household_id', hid).eq('log_date', today),
@@ -110,8 +110,10 @@ Deno.serve(async (req) => {
       admin.from('bill_payments').select('bill_id, ym').eq('household_id', hid).in('ym', [ymPrev, today.slice(0, 7), ymNext]),
       admin.from('habits').select('*').eq('household_id', hid).eq('active', true),
       admin.from('habit_logs').select('habit_id, amount').eq('household_id', hid).eq('log_date', today),
-      admin.from('events').select('*').eq('household_id', hid).eq('alert', true).gte('start_date', today).lte('start_date', addDays(today, 120)),
+      admin.from('events').select('*').eq('household_id', hid).eq('alert', true).or(`yearly.eq.true,and(start_date.gte.${today},start_date.lte.${addDays(today, 120)})`),
+      admin.from('pendings').select('*').eq('household_id', hid).is('done_at', null),
     ]);
+    const events = (evRaw || []).map((e) => nextYearly(e, today)).filter((e) => e.start_date >= today && e.start_date <= addDays(today, 120));
     const taken = new Set((medLogs || []).map((l) => l.med_id));
     const paid = new Set((payments || []).map((p) => `${p.bill_id}|${p.ym}`));
 
@@ -128,9 +130,11 @@ Deno.serve(async (req) => {
     }
 
     // Eventos já avisados alguma vez (para o caso de o alerta ter ficado para trás)
-    const evIds = (events || []).map((e) => e.id);
+    const evIds = events.map((e) => e.id);
     const { data: evSent } = evIds.length ? await admin.from('notification_log').select('user_id, ref').eq('kind', 'event').in('ref', evIds) : { data: [] };
     const evSentSet = new Set((evSent || []).map((x) => `${x.user_id}|${x.ref}`));
+    const { data: evSentY } = evIds.length ? await admin.from('notification_log').select('user_id, ref').eq('kind', 'event').like('ref', '%:%') : { data: [] };
+    for (const x of evSentY || []) evSentSet.add(`${x.user_id}|${x.ref}`);
 
     for (const p of members) {
       // 1) Remédio/suplemento no horário cadastrado, e um lembrete extra 30 min depois se continuar sem check
@@ -164,9 +168,10 @@ Deno.serve(async (req) => {
         const rel = days === 0 ? 'hoje' : days === 1 ? 'amanhã' : `em ${days} dias`;
         const hora = e.start_time ? ` às ${e.start_time.slice(0, 5)}` : '';
         const span = e.end_date && e.end_date !== e.start_date ? ` (${dm(e.start_date)} a ${dm(e.end_date)})` : '';
-        const due = alertDate < today ? !evSentSet.has(`${p.id}|${e.id}`) && nowMin >= at : alertDate === today && nowMin >= at;
+        const evRef = e.yearly ? `${e.id}:${e.start_date}` : e.id;
+        const due = alertDate < today ? !evSentSet.has(`${p.id}|${evRef}`) && nowMin >= at : alertDate === today && nowMin >= at;
         if (due) {
-          await notifyOnce(p.id, 'event', e.id, today, { title: `${e.icon || '📅'} ${e.title}`, body: `É ${rel}${hora}${span}.`, url: '/?tab=agenda', tag: 'event-' + e.id });
+          await notifyOnce(p.id, 'event', evRef, today, { title: `${e.icon || '📅'} ${e.title}`, body: `É ${rel}${hora}${span}.`, url: '/?tab=agenda', tag: 'event-' + e.id });
         }
         if (e.alert_hours && e.start_time && e.start_date === today) {
           const st = tmin(e.start_time);
@@ -177,6 +182,48 @@ Deno.serve(async (req) => {
       }
 
       // 4) Resumos das 8h e 19h
+      const myPend = (pendings || []).filter((x) => !x.owner_id || x.owner_id === p.id);
+      if (nowMin >= 9 * 60) {
+        for (const x of myPend) {
+          if (x.due_date !== today) continue;
+          await notifyOnce(p.id, 'pending', x.id, today, { title: `📌 ${x.title}`, body: x.urgent ? 'Urgente · prazo é hoje.' : 'O prazo é hoje.', url: '/?tab=casa', tag: 'pend-' + x.id });
+        }
+        for (const m of (allMeds || []).filter((x) => x.owner_id === p.id && x.stock_qty != null)) {
+          const per = Number(m.per_day) || 1;
+          const days = Math.floor(Number(m.stock_qty) / per);
+          if (days > (m.low_days || 5)) continue;
+          const { data: recent } = await admin.from('notification_log').select('id').match({ user_id: p.id, kind: 'stock', ref: m.id }).gte('sent_on', addDays(today, -2)).limit(1);
+          if (recent?.length) continue;
+          await notifyOnce(p.id, 'stock', m.id, today, { title: `💊 ${m.name} está acabando`, body: days <= 0 ? 'Acabou o estoque. Já coloquei na lista de compras.' : `Dá pra mais ${days} dia${days > 1 ? 's' : ''}. Já coloquei na lista de compras.`, url: '/?tab=mercado', tag: 'stock-' + m.id });
+          const { data: inList } = await admin.from('shopping_list').select('id').eq('household_id', hid).eq('checked', false).ilike('name', m.name).limit(1);
+          if (!inList?.length) await admin.from('shopping_list').insert({ household_id: hid, name: m.name, source: 'estoque' });
+        }
+      }
+
+      if (wd === 0 && H === 19 && (await once(p.id, 'weekly', 'domingo', today))) {
+        const weekAgo = addDays(today, -6);
+        const ids = (tasks || []).map((t) => t.id);
+        const [{ data: wLogs }, { data: wPurch }, { data: wHab }, { data: wPendDone }] = await Promise.all([
+          ids.length ? admin.from('task_logs').select('id').in('task_id', ids).gte('done_on', weekAgo) : Promise.resolve({ data: [] }),
+          admin.from('purchases').select('total').eq('household_id', hid).gte('purchased_at', weekAgo + 'T00:00:00-03:00'),
+          admin.from('habit_logs').select('habit_id, log_date').eq('household_id', hid).gte('log_date', weekAgo),
+          admin.from('pendings').select('id').eq('household_id', hid).gte('done_at', weekAgo + 'T00:00:00-03:00'),
+        ]);
+        const myHabIds = new Set((habits || []).filter((h) => h.owner_id === p.id).map((h) => h.id));
+        const habDays = (wHab || []).filter((l) => myHabIds.has(l.habit_id)).length;
+        const spent = (wPurch || []).reduce((a, x) => a + Number(x.total || 0), 0);
+        const nextWeek = events.filter((e) => e.start_date > today && e.start_date <= addDays(today, 7)).map((e) => e.title);
+        const pendWeek = myPend.filter((x) => x.due_date && x.due_date > today && x.due_date <= addDays(today, 7)).length;
+        const lines = [
+          `🏠 ${wLogs?.length || 0} tarefas feitas · 📌 ${wPendDone?.length || 0} pendências resolvidas`,
+          `💪 ${habDays} registros de hábitos · 🛒 R$ ${spent.toFixed(2).replace('.', ',')} no mercado`,
+          nextWeek.length ? `📅 Semana que vem: ${nextWeek.slice(0, 3).join(', ')}` : '',
+          pendWeek ? `⏰ ${pendWeek} pendência${pendWeek > 1 ? 's' : ''} com prazo nos próximos 7 dias` : '',
+        ].filter(Boolean);
+        const r = await pushTo(p.id, { title: `Resumo da semana, ${p.display_name} 🐱`, body: lines.join('\n'), url: '/?tab=hoje', tag: 'weekly' }, 'weekly');
+        if (!r.delivered && r.retryable) await admin.from('notification_log').delete().match({ user_id: p.id, kind: 'weekly', ref: 'domingo', sent_on: today });
+      }
+
       const slot = H === 8 ? '08' : H === 19 ? '19' : null;
       if (slot) {
         const ids = (tasks || []).map((t) => t.id);
@@ -202,12 +249,14 @@ Deno.serve(async (req) => {
           return h.kind === 'count' && h.target ? v < Number(h.target) : false;
         });
         const pendingBills = billsDue.filter((x) => x.diff <= 1);
-        if ((pendingTasks.length || pendingMeds.length || pendingHabits.length || pendingBills.length) && (await once(p.id, 'summary', slot, today))) {
+        const pendingPend = myPend.filter((x) => (x.due_date && x.due_date <= addDays(today, slot === '19' ? 1 : 0)) || x.urgent);
+        if ((pendingTasks.length || pendingMeds.length || pendingHabits.length || pendingBills.length || pendingPend.length) && (await once(p.id, 'summary', slot, today))) {
           const parts: string[] = [];
           if (pendingMeds.length) parts.push('💊 ' + pendingMeds.map((m) => m.name).join(', '));
           if (pendingHabits.length) parts.push('💪 ' + pendingHabits.map((h) => h.name).join(', '));
           if (pendingTasks.length) parts.push('🏠 ' + pendingTasks.map((t) => t.name).join(', '));
           if (pendingBills.length) parts.push('🧾 ' + pendingBills.map((x) => x.b.name).join(', '));
+          if (pendingPend.length) parts.push('📌 ' + pendingPend.map((x) => x.title).slice(0, 4).join(', '));
           const r = await pushTo(p.id, {
             title: slot === '08' ? `Bom dia, ${p.display_name}! Pra hoje:` : `Ainda falta, ${p.display_name}:`,
             body: parts.join('\n'), url: '/?tab=hoje', tag: 'summary-' + slot,

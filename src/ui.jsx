@@ -1,4 +1,5 @@
 import { createContext } from 'preact';
+import { createPortal } from 'preact/compat';
 import { useEffect, useState, useContext } from 'preact/hooks';
 
 const S = { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.9, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
@@ -64,7 +65,7 @@ export function Sheet({ open, onClose, title, children }) {
     return () => { document.body.style.overflow = prev; };
   }, [open]);
   if (!open) return null;
-  return (
+  return createPortal(
     <>
       <div class="scrim" onClick={onClose} />
       <div class="sheet" role="dialog">
@@ -72,7 +73,8 @@ export function Sheet({ open, onClose, title, children }) {
         {title && <div class="row" style={{ marginBottom: 6 }}><h3 class="grow" style={{ margin: 0 }}>{title}</h3><button class="iconbtn" onClick={onClose} aria-label="Fechar">{Icon.x}</button></div>}
         <div style={{ marginTop: 12 }}>{children}</div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
@@ -100,3 +102,34 @@ export function Field({ label, children }) {
 }
 
 export function haptic() { try { navigator.vibrate && navigator.vibrate(12); } catch {} }
+
+/* Seções recolhíveis da tela Hoje (lembra a escolha no aparelho) */
+const FOLD_KEY = 'garrinchapp-fold';
+function readFold() { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}'); } catch { return {}; } }
+export function useFold(id, defOpen = true) {
+  const [open, setOpen] = useState(() => { const v = readFold()[id]; return v == null ? defOpen : v; });
+  const toggle = () => setOpen((o) => { const n = !o; try { const all = readFold(); all[id] = n; localStorage.setItem(FOLD_KEY, JSON.stringify(all)); } catch {} return n; });
+  return [open, toggle];
+}
+export function FoldHead({ title, open, onToggle, summary, badge, actions }) {
+  return (
+    <div class={'fold-head' + (open ? ' open' : '')}>
+      <button class="fold-btn" onClick={onToggle} aria-expanded={open ? 'true' : 'false'}>
+        <h2>{title}</h2>
+        {badge}
+        {!open && summary && <span class="fold-sum">{summary}</span>}
+        <svg class="chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && actions && <span class="fold-act">{actions}</span>}
+    </div>
+  );
+}
+export function Fold({ id, title, summary, badge, actions, defOpen = true, children }) {
+  const [open, toggle] = useFold(id, defOpen);
+  return (
+    <section class={'fold' + (open ? ' open' : '')}>
+      <FoldHead title={title} open={open} onToggle={toggle} summary={summary} badge={badge} actions={actions} />
+      {open && <div class="fold-body">{children}</div>}
+    </section>
+  );
+}

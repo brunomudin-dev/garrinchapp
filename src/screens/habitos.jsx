@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { Check, Avatar, Sheet, Field, Icon, EMOJIS, toast, haptic } from '../ui.jsx';
+import { Check, Avatar, Sheet, Field, Icon, EMOJIS, toast, haptic, useFold, FoldHead } from '../ui.jsx';
 import { sb, firstName } from '../data.js';
 import { habitsToday, scheduledOn, nextOccurrence, habitDone, logsOf } from '../lib/habits.js';
 import { fmtRel, addDays, weekday } from '../lib/schedule.js';
@@ -170,7 +170,7 @@ function HabitWeek({ st, today }) {
   );
 }
 
-export function Habitos({ store, today }) {
+export function Habitos({ store, today, fold }) {
   const { st, reload } = store;
   const [edit, setEdit] = useState(null);
   const [count, setCount] = useState(null);
@@ -178,12 +178,19 @@ export function Habitos({ store, today }) {
   const me = st.me;
   const other = st.profiles.find((p) => p.id !== me.id);
   const any = st.habits.some((h) => h.active);
+  const [open, toggle] = useFold('habitos', true);
+  const mine = habitsToday(st, today, me.id);
+  const pend = mine.filter((h) => !h.done);
+  const summary = !mine.length ? 'nada hoje' : pend.length ? pend.map((h) => h.name).slice(0, 2).join(', ') + (pend.length > 2 ? '…' : '') : 'tudo feito ✓';
+  const acts = <><button class="link" onClick={() => setWeek(true)}>Semana</button><button class="link" onClick={() => setEdit({})}>+ Novo</button></>;
   return (
-    <div>
-      <div class="section"><h2>Hábitos</h2><span style={{ display: 'flex', gap: 16 }}><button class="link" onClick={() => setWeek(true)}>Ver semana</button><button class="link" onClick={() => setEdit({})}>+ Novo</button></span></div>
+    <section class={'fold' + (open ? ' open' : '')}>
+      <FoldHead title="Hábitos" open={open} onToggle={toggle} summary={summary} actions={acts} />
+      {open && <div class="fold-body">
       {!any && <div class="card empty"><div>Nenhum hábito ainda.<br />Cadastre treino, leitura, corrida...</div></div>}
       <Person p={me} label="Você" store={store} today={today} onEdit={setEdit} onCount={setCount} />
       {other && <Person p={other} label={firstName(other.display_name)} store={store} today={today} onEdit={setEdit} onCount={setCount} />}
+      </div>}
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar hábito' : 'Novo hábito'}>
         {edit && <HabitForm habit={edit.id ? edit : null} st={st} onClose={() => setEdit(null)} reload={reload} />}
       </Sheet>
@@ -193,6 +200,6 @@ export function Habitos({ store, today }) {
       <Sheet open={!!count} onClose={() => setCount(null)} title={count ? `${count.icon} ${count.name}` : ''}>
         {count && <CountSheet h={count} today={today} store={store} onClose={() => setCount(null)} />}
       </Sheet>
-    </div>
+    </section>
   );
 }

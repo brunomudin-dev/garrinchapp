@@ -245,6 +245,18 @@ function Lista({ store, today, openProduct }) {
   const open = st.list.filter((l) => !l.checked);
   const done = st.list.filter((l) => l.checked);
   const prodMap = new Map(st.products.map((p) => [p.id, p]));
+  const hist = useMemo(() => productHistory(st), [st.items, st.purchases]);
+  const byName = useMemo(() => new Map(st.products.map((p) => [p.name.toLowerCase(), p.id])), [st.products]);
+  const priceOf = (l) => {
+    const pid = l.product_id || byName.get(l.name.toLowerCase());
+    const h = pid && hist.get(pid);
+    if (!h || !h.length || !(h[0].unit_price > 0)) return null;
+    const last = h[0];
+    const prev = h.find((x, i) => i > 0 && x.unit_price > 0);
+    const min = h.reduce((m, x) => (x.unit_price > 0 && x.unit_price < m.unit_price ? x : m), last);
+    return { last, prev, min, pid };
+  };
+  const estimate = open.reduce((a, l) => { const p = priceOf(l); return a + (p ? p.last.total || p.last.unit_price : 0); }, 0);
   const matches = txt.length >= 2 ? st.products.filter((p) => p.name.toLowerCase().includes(txt.toLowerCase())).slice(0, 5) : [];
 
   const add = async (name, product_id = null, source = 'manual', note = null) => {
@@ -305,7 +317,22 @@ function Lista({ store, today, openProduct }) {
             {ls.map((l) => (
               <button key={l.id} class="item" style={{ width: '100%', textAlign: 'left', padding: '10px 14px' }} onClick={() => toggle(l)}>
                 <Check on={false} />
-                <span class="grow name">{l.name}</span>
+                <span class="grow" style={{ minWidth: 0 }}>
+                  <span class="name" style={{ display: 'block' }}>{l.name}</span>
+                  {(() => {
+                    const pr = priceOf(l);
+                    if (!pr) return null;
+                    const d = pr.prev ? pr.last.unit_price - pr.prev.unit_price : 0;
+                    return (
+                      <span class="price-hint">
+                        últ. {brl(pr.last.unit_price)}{pr.last.store ? ` · ${pr.last.store}` : ''}
+                        {d > 0.009 && <span class="up"> ▲ {brl(d)}</span>}
+                        {d < -0.009 && <span class="down"> ▼ {brl(-d)}</span>}
+                        {pr.min.unit_price < pr.last.unit_price - 0.009 && pr.min.store && pr.min.store !== pr.last.store && <> · menor {brl(pr.min.unit_price)} no {pr.min.store}</>}
+                      </span>
+                    );
+                  })()}
+                </span>
                 {l.note && <span class="pill">{l.note}</span>}
                 {l.source !== 'manual' && <span class="pill due">{l.source === 'estoque' ? 'estoque' : 'sugestão'}</span>}
               </button>
@@ -313,6 +340,7 @@ function Lista({ store, today, openProduct }) {
           </div>
         </div>
       ))}
+      {open.length > 0 && estimate > 0 && <p class="muted small" style={{ margin: '0 4px 10px' }}>Estimativa pelos últimos preços: <b style={{ color: 'var(--ink)' }}>{brl(estimate)}</b> (só itens com histórico)</p>}
       {open.length > 0 && <button class="btn ghost block" style={{ marginBottom: 6 }} onClick={share}>{Icon.share} Compartilhar lista</button>}
 
       {(now.length > 0 || lowMeds.length > 0) && (

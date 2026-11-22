@@ -18,7 +18,7 @@ function tags(it, kind) {
   return out;
 }
 
-function ItemForm({ item, list: list0, store, onClose }) {
+export function ItemForm({ item, list: list0, store, onClose }) {
   const [lid, setLid] = useState(list0.id);
   const list = store.st.lists.find((l) => l.id === lid) || list0;
   const [f, setF] = useState(() => ({ title: item?.title || '', details: item?.details || '', notes: item?.notes || '', url: item?.url || '' }));

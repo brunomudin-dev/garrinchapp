@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
 import { Check, Sheet, Icon, Field, toast, Avatar, MenuBtn } from '../ui.jsx';
 import { Contas } from './contas.jsx';
+import { Pendencias } from './pendencias.jsx';
+import { TaskHold } from './taskcheck.jsx';
 import { tasksWithStatus, toggleTask } from '../actions.js';
 import { ruleLabel, fmtRel, nextCleanerDay, isCleanerDay, diffDays } from '../lib/schedule.js';
 import { sb, firstName } from '../data.js';
@@ -106,6 +108,8 @@ export function Casa({ store, today, intent, clearIntent }) {
   const { st, reload } = store;
   const [edit, setEdit] = useState(null);
   const [cleaner, setCleaner] = useState(false);
+  const [seg, setSeg] = useState('casa');
+  const [newPend, setNewPend] = useState(0);
   const all = tasksWithStatus(st, today);
   const order = { late: 0, due: 1, cleaner: 2, done: 3, ok: 4 };
   all.sort((a, b) => order[a.st.status] - order[b.st.status] || (b.st.lateDays || 0) - (a.st.lateDays || 0) || a.sort - b.sort);
@@ -114,19 +118,29 @@ export function Casa({ store, today, intent, clearIntent }) {
     ['Feito hoje', all.filter((t) => ['done', 'cleaner'].includes(t.st.status))],
     ['Em dia', all.filter((t) => t.st.status === 'ok')],
   ];
+  const pendingCasa = all.filter((t) => ['late', 'due'].includes(t.st.status)).length;
+  const openPend = st.pendings.filter((p) => !p.done_at).length;
   const next = nextCleanerDay(st.hh, today);
   const cToday = isCleanerDay(st.hh, today);
   useEffect(() => {
-    if (intent === 'contas') {
-      setTimeout(() => document.getElementById('contas')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-      clearIntent && clearIntent();
-    }
+    if (intent === 'contas') { setSeg('contas'); clearIntent && clearIntent(); }
+    if (intent === 'pendencias') { setSeg('pend'); clearIntent && clearIntent(); }
+    if (intent === 'nova-pendencia') { setSeg('pend'); setNewPend(Date.now()); clearIntent && clearIntent(); }
   }, [intent]);
 
   return (
     <div>
-      <div class="top"><div class="t"><h1>Casa</h1><div class="sub">Tarefas e contas</div></div><button class="btn soft" onClick={() => setEdit({})}>{Icon.plus} Nova</button><MenuBtn /></div>
+      <div class="top"><div class="t"><h1>Tarefas</h1><div class="sub">Casa, pendências e contas</div></div>{seg !== 'contas' && <button class="btn soft" onClick={() => (seg === 'pend' ? setNewPend(Date.now()) : setEdit({}))}>{Icon.plus} Nova</button>}<MenuBtn /></div>
 
+      <div class="seg" style={{ marginBottom: 16 }}>
+        <button class={seg === 'casa' ? 'on' : ''} onClick={() => setSeg('casa')}>Casa{pendingCasa ? ` ${pendingCasa}` : ''}</button>
+        <button class={seg === 'pend' ? 'on' : ''} onClick={() => setSeg('pend')}>Pendências{openPend ? ` ${openPend}` : ''}</button>
+        <button class={seg === 'contas' ? 'on' : ''} onClick={() => setSeg('contas')}>Contas</button>
+      </div>
+
+      {seg === 'pend' && <Pendencias store={store} today={today} newSignal={newPend} />}
+      {seg === 'contas' && <Contas store={store} today={today} />}
+      {seg === 'casa' && <>
       <button class="card row" style={{ width: '100%', textAlign: 'left' }} onClick={() => setCleaner(true)}>
         <span class="item" style={{ padding: 0, boxShadow: 'none', background: 'none' }}><span class="ic">🧹</span></span>
         <span class="grow">
@@ -142,7 +156,8 @@ export function Casa({ store, today, intent, clearIntent }) {
           <div class="stack">
             {list.map((t) => {
               const who = t.assignee_id && st.profiles.find((p) => p.id === t.assignee_id);
-              const by = t.last && st.profiles.find((p) => p.id === t.last.done_by);
+              const byP = t.last && st.profiles.find((p) => p.id === t.last.done_by);
+              const by = byP ? { display_name: byP.display_name } : t.last?.done_by_label ? { display_name: t.last.done_by_label } : null;
               const done = t.st.status === 'done' || t.st.status === 'cleaner';
               return (
                 <div key={t.id} class={'item' + (done ? ' done' : '')}>
@@ -159,16 +174,15 @@ export function Casa({ store, today, intent, clearIntent }) {
                       {who && <span class="pill v">{firstName(who.display_name)}</span>}
                     </div>
                   </button>
-                  {t.rule !== 'cleaner' && <button onClick={() => toggleTask(store, t, today)} aria-label="Marcar feito"><Check on={t.st.status === 'done'} /></button>}
+                  {t.rule !== 'cleaner' && <TaskHold task={t} store={store} today={today}><Check on={t.st.status === 'done'} /></TaskHold>}
                 </div>
               );
             })}
           </div>
         </div>
       ))}
-      <p class="muted small" style={{ textAlign: 'center', marginTop: 20 }}>Toque no nome pra editar. Toque no círculo pra marcar como feito.</p>
-
-      <Contas store={store} today={today} />
+      <p class="muted small" style={{ textAlign: 'center', marginTop: 20 }}>Toque no nome pra editar. Toque no círculo pra marcar como feito; segure pra escolher outro dia ou quem fez.</p>
+      </>}
 
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar tarefa' : 'Nova tarefa'}>
         {edit && <TaskForm task={edit.id ? edit : null} st={st} onClose={() => setEdit(null)} reload={reload} />}

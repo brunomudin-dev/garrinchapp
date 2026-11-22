@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState, useCallback, useRef } from 'preact/hooks';
-import { todayStr, addDays } from './lib/schedule.js';
+import { todayStr, addDays, nextYearly } from './lib/schedule.js';
 
 export const SUPABASE_URL = 'https://rajskpsiohysjsduhoqa.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_bSa7P9bxM39XX1Ag3nwXdQ_dSoQbMFk';
@@ -44,7 +44,7 @@ export function useStore(session) {
       const t = todayStr();
       setToday(t);
       const since = addDays(t, -400);
-      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items, bills, billPays, habits, habitLogs, events, complaints, reacts, lists, listItems] = await Promise.all([
+      const [me, profiles, hh, meds, medLogs, tasks, taskLogs, list, products, purchases, items, bills, billPays, habits, habitLogs, events, complaints, reacts, lists, listItems, pendings, pendSteps] = await Promise.all([
         sb.from('profiles').select('*').eq('id', session.user.id).single(),
         sb.from('profiles').select('*').order('created_at'),
         sb.from('households').select('*').single(),
@@ -65,13 +65,15 @@ export function useStore(session) {
         sb.from('complaint_reactions').select('*'),
         sb.from('lists').select('*').order('sort'),
         fetchAll(() => sb.from('list_items').select('*').order('created_at', { ascending: false })),
+        sb.from('pendings').select('*').or(`done_at.is.null,done_at.gte.${addDays(t, -60)}`).order('created_at', { ascending: false }),
+        sb.from('pending_steps').select('*').order('sort').order('created_at'),
       ]);
-      for (const r of [me, profiles, hh, meds, medLogs, tasks, list, bills, billPays, habits, events, complaints, reacts, lists]) if (r.error) throw r.error;
+      for (const r of [me, profiles, hh, meds, medLogs, tasks, list, bills, billPays, habits, events, complaints, reacts, lists, pendings, pendSteps]) if (r.error) throw r.error;
       setSt({
         me: me.data, profiles: profiles.data, hh: hh.data, meds: meds.data, medLogs: medLogs.data,
         tasks: tasks.data, taskLogs, list: list.data, products, purchases, items,
-        bills: bills.data, billPays: billPays.data, habits: habits.data, habitLogs, events: events.data,
-        complaints: complaints.data, reacts: reacts.data, lists: lists.data, listItems,
+        bills: bills.data, billPays: billPays.data, habits: habits.data, habitLogs, events: events.data.map((e) => nextYearly(e, t)).sort((a, b) => a.start_date.localeCompare(b.start_date)),
+        complaints: complaints.data, reacts: reacts.data, lists: lists.data, listItems, pendings: pendings.data, pendSteps: pendSteps.data,
       });
     } catch (e) {
       console.error(e);

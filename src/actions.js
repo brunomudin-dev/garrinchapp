@@ -16,6 +16,48 @@ export function tasksWithStatus(st, today) {
   }).filter((t) => t.st.status !== 'finished');
 }
 
+export async function markTaskOn(store, task, date, who) {
+  const { st, reload } = store;
+  haptic();
+  const row = { task_id: task.id, done_on: date };
+  if (who === 'cleaner') { row.done_by = null; row.done_by_label = 'Faxineira'; }
+  else if (who) row.done_by = who;
+  const dup = st.taskLogs.find((l) => l.task_id === task.id && l.done_on === date);
+  if (dup) await sb.from('task_logs').delete().eq('id', dup.id);
+  const { data, error } = await sb.from('task_logs').insert(row).select().single();
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(`${task.icon} ${task.name}: feito${date === todayStrLocal() ? '' : ' em ' + date.slice(8) + '/' + date.slice(5, 7)}!`, {
+    label: 'Desfazer',
+    fn: async () => { await sb.from('task_logs').delete().eq('id', data.id); reload(); },
+  });
+  reload();
+}
+const todayStrLocal = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+
+export function pendingState(p, today) {
+  if (p.done_at) return { cls: 'ok', text: 'feita', rank: 9 };
+  if (p.due_date) {
+    const d = Math.round((Date.parse(p.due_date) - Date.parse(today)) / 86400000);
+    if (d < 0) return { cls: 'late', text: `atrasada ${-d} dia${d < -1 ? 's' : ''}`, rank: 0, late: true };
+    if (d === 0) return { cls: 'due', text: 'hoje', rank: 1, soon: true };
+    if (d === 1) return { cls: 'due', text: 'amanhã', rank: 2, soon: true };
+    if (d === 2) return { cls: 'due', text: 'em 2 dias', rank: 3, soon: true };
+    return { cls: '', text: `${p.due_date.slice(8)}/${p.due_date.slice(5, 7)}`, rank: 5 };
+  }
+  return { cls: '', text: '', rank: p.urgent ? 4 : 6 };
+}
+
+export async function togglePending(store, p) {
+  const { st, setSt, reload } = store;
+  haptic();
+  const patch = p.done_at ? { done_at: null, done_by: null } : { done_at: new Date().toISOString(), done_by: st.me.id };
+  setSt({ ...st, pendings: st.pendings.map((x) => (x.id === p.id ? { ...x, ...patch } : x)) });
+  const { error } = await sb.from('pendings').update(patch).eq('id', p.id);
+  if (error) toast('Erro: ' + error.message);
+  else if (!p.done_at) toast(`✅ ${p.title}`, { label: 'Desfazer', fn: async () => { await sb.from('pendings').update({ done_at: null, done_by: null }).eq('id', p.id); reload(); } });
+  reload();
+}
+
 export async function toggleTask(store, task, today) {
   const { st, setSt, reload } = store;
   haptic();

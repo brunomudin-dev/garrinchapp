@@ -12,10 +12,13 @@ import { Ajustes } from './screens/ajustes.jsx';
 import { Agenda } from './screens/agenda.jsx';
 import { Reclame } from './screens/reclame.jsx';
 import { Listas } from './screens/listas.jsx';
+import { QuickAdd } from './screens/quickadd.jsx';
+import { attentionPendings } from './screens/pendencias.jsx';
 
 const MENU = [
   ['listas', null, '📝', 'Listas', 'Filmes, lugares, receitas e livros'],
   ['reclame', null, '😼', 'Reclame aqui', 'Mural de brincadeira'],
+  ['casa', 'pendencias', '📌', 'Pendências', 'Coisas pra resolver'],
   ['casa', 'contas', '🧾', 'Contas a pagar', 'Vencimentos e lembretes'],
   ['mercado', 'compras', '🛒', 'Histórico de compras', 'Notinhas e pedidos'],
   ['mercado', 'gastos', '📊', 'Gastos no mercado', 'Por mês, categoria e cartão'],
@@ -102,7 +105,7 @@ function Shell({ session }) {
   const pendingTasks = tasksWithStatus(st, today).filter((t) => ['late', 'due'].includes(t.st.status)).length;
   const pendingBills = st.bills.filter((b) => b.active && ['late', 'today', 'soon'].includes(billInfo(b, st.billPays, today).state)).length;
   const next7 = st.events.filter((e) => e.start_date >= today && e.start_date <= new Date(Date.parse(today + 'T12:00:00Z') + 2 * 86400000).toISOString().slice(0, 10)).length;
-  const tabs = [['hoje', 'Hoje', Icon.today], ['casa', 'Casa', Icon.home, pendingTasks + pendingBills], ['mercado', 'Mercado', Icon.cart], ['agenda', 'Agenda', Icon.cal, next7]];
+  const tabs = [['hoje', 'Hoje', Icon.today], ['casa', 'Tarefas', Icon.home, pendingTasks + pendingBills + attentionPendings(st, today).filter((p) => !p.owner_id || p.owner_id === st.me.id).length], ['mercado', 'Mercado', Icon.cart], ['agenda', 'Agenda', Icon.cal, next7]];
 
   return (
     <MenuCtx.Provider value={() => setMenu(true)}>
@@ -110,11 +113,12 @@ function Shell({ session }) {
         {tab === 'hoje' && <Hoje store={store} today={today} go={go} />}
         {tab === 'casa' && <Casa store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
         {tab === 'mercado' && <Mercado store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
-        {tab === 'agenda' && <Agenda store={store} today={today} />}
+        {tab === 'agenda' && <Agenda store={store} today={today} intent={intent} clearIntent={() => setIntent(null)} />}
         {tab === 'reclame' && <Reclame store={store} />}
         {tab === 'listas' && <Listas store={store} />}
         {tab === 'ajustes' && <Ajustes store={store} intent={intent} clearIntent={() => setIntent(null)} />}
       </main>
+      {['hoje', 'casa', 'mercado', 'agenda', 'listas'].includes(tab) && <QuickAdd store={store} today={today} go={go} />}
       <Drawer open={menu} onClose={() => setMenu(false)} go={go} />
       <nav class="tabbar"><div class="in">
         {tabs.map(([k, l, ic, badge]) => (
